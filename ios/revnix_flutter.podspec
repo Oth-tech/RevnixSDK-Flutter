@@ -5,18 +5,20 @@
 Pod::Spec.new do |s|
   s.name             = 'revnix_flutter'
   s.version          = '0.1.0'
-  s.summary          = 'A new Flutter plugin project.'
+  s.summary          = 'Revnix subscriptions and entitlements for Flutter.'
   s.description      = <<-DESC
-A new Flutter plugin project.
+Flutter plugin for Revnix — in-app subscriptions, entitlements, placements
+and purchase registration, bridging the native revnix-swift SDK (StoreKit 2).
                        DESC
-  s.homepage         = 'http://example.com'
+  s.homepage         = 'https://revnix.io'
   s.license          = { :file => '../LICENSE' }
-  s.author           = { 'Your Company' => 'email@example.com' }
+  s.author           = { 'Revnix' => 'support@revnix.io' }
   s.source           = { :path => '.' }
-  s.source_files = 'revnix_flutter/Sources/revnix_flutter/**/*'
+  # revnix-swift 0.1.0 is VENDORED under Sources/revnix_flutter/Revnix (glob
+  # below picks it up) until it ships to CocoaPods — then remove that folder
+  # and restore:  s.dependency 'Revnix', '~> 0.1'
+  s.source_files = 'revnix_flutter/Sources/revnix_flutter/**/*.swift'
   s.dependency 'Flutter'
-  # The native SDK this plugin wraps. Not yet published to CocoaPods.
-  s.dependency 'Revnix', '~> 0.1'
   s.platform = :ios, '16.0'
 
   # Flutter.framework does not contain a i386 slice.

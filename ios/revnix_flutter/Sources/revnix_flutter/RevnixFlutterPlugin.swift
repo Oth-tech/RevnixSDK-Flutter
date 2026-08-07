@@ -1,6 +1,8 @@
 import Flutter
-import Revnix
 import UIKit
+// revnix-swift is vendored into this target (Sources/revnix_flutter/Revnix —
+// same module, so no `import Revnix`). Once it ships to CocoaPods/SPM, delete
+// the vendored folder, restore the import, and re-add the podspec dependency.
 
 /// iOS side of the Flutter bridge — a thin adapter over `revnix-swift`.
 ///

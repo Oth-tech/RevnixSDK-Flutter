@@ -11,6 +11,8 @@ buildscript {
     dependencies {
         classpath("com.android.tools.build:gradle:9.0.1")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion")
+        // Vendored revnix-core models are @Serializable.
+        classpath("org.jetbrains.kotlin:kotlin-serialization:$kotlinVersion")
     }
 }
 
@@ -24,6 +26,8 @@ allprojects {
 plugins {
     id("com.android.library")
 }
+apply(plugin = "org.jetbrains.kotlin.android")
+apply(plugin = "org.jetbrains.kotlin.plugin.serialization")
 
 android {
     namespace = "com.revnix.revnix_flutter"
@@ -72,9 +76,15 @@ kotlin {
 }
 
 dependencies {
-    // The native SDK this plugin wraps. Not yet published to Maven Central,
-    // so an Android build of this plugin cannot resolve it until it is.
-    implementation("com.revnix:revnix-android:0.1.0")
+    // revnix-kotlin (revnix-core + revnix-android) is VENDORED under
+    // src/main/kotlin/com/revnix — see the note there. Once it ships to Maven
+    // Central, delete the vendored sources and restore
+    //   implementation("com.revnix:revnix-android:0.1.0")
+    // These are its dependencies, carried over verbatim:
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.android.billingclient:billing-ktx:8.3.0")
 
     testImplementation("org.jetbrains.kotlin:kotlin-test")
 }
