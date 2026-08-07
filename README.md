@@ -6,6 +6,10 @@ entitlements, wrapping the native SDKs rather than reimplementing them.
 - **iOS** → [`revnix-swift`](https://github.com/Oth-tech/revnix-swift) (StoreKit 2)
 - **Android** → [`revnix-kotlin`](https://github.com/Oth-tech/revnix-kotlin) (Play Billing 8)
 
+> Until those SDKs ship to CocoaPods / Maven Central, their 0.1.0 sources are
+> **vendored** inside this plugin (`ios/…/Revnix/`, `android/…/com/revnix/`)
+> so the plugin builds standalone. Fix native bugs upstream, then re-copy.
+
 ## Why a wrapper and not a Dart client
 
 The resilience policy — offline cache, retry queue, kill-switch discipline — is

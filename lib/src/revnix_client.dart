@@ -146,16 +146,16 @@ class RevnixClient {
   /// Fire-and-forget install beacon; recorded once per customer id.
   Future<void> registerInstall({String? platform, String? appVersion}) =>
       _invoke<void>('registerInstall', {
-        if (platform != null) 'platform': platform,
-        if (appVersion != null) 'appVersion': appVersion,
+        'platform': ?platform,
+        'appVersion': ?appVersion,
       });
 
   /// Fire-and-forget paywall impression. Call when the paywall becomes
   /// visible, not when you start loading it.
   Future<void> logPaywallShown({String? placementKey, String? paywallId}) =>
       _invoke<void>('logPaywallShown', {
-        if (placementKey != null) 'placementKey': placementKey,
-        if (paywallId != null) 'paywallId': paywallId,
+        'placementKey': ?placementKey,
+        'paywallId': ?paywallId,
       });
 
   /// Background failures the SDK swallowed (queue drains, telemetry beacons).

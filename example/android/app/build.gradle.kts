@@ -7,7 +7,10 @@ plugins {
 android {
     namespace = "com.revnix.revnix_flutter_example"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    // Flutter 3.44 pins NDK 28.2, whose local copy on this machine is a
+    // corrupt half-download; 29.0 is intact. No native C/C++ in this app or
+    // the plugin, so any modern NDK satisfies AGP's configuration step.
+    ndkVersion = "29.0.14206865"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
