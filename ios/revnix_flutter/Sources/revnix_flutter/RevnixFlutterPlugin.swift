@@ -221,7 +221,22 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
                     ["packageId": pkg.packageId, "productId": pkg.productId]
                 },
             ] as [String: Any?],
+            // Passed through loose — Dart owns the typed PaywallConfig parse,
+            // so a new dashboard field never requires a native release.
+            "paywall": resolution.paywall.map(Self.bridgeValue),
         ]
+    }
+
+    /// Loose JSON → StandardMessageCodec-safe values (maps/lists/primitives).
+    private static func bridgeValue(_ value: JSONValue) -> Any {
+        switch value {
+        case .string(let s): return s
+        case .number(let n): return n
+        case .bool(let b): return b
+        case .null: return NSNull()
+        case .array(let a): return a.map(bridgeValue)
+        case .object(let o): return o.mapValues(bridgeValue)
+        }
     }
 
     /// The bridge's real contract: every case maps to a stable code plus
