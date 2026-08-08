@@ -230,6 +230,181 @@ class PlacementOffering {
       );
 }
 
+/// One feature row in a paywall config.
+class PaywallFeature {
+  const PaywallFeature({this.icon, required this.title, this.description});
+
+  final String? icon;
+  final String title;
+  final String? description;
+
+  static PaywallFeature fromMap(Map<Object?, Object?> map) => PaywallFeature(
+        icon: map['icon'] as String?,
+        title: map['title'] as String? ?? '',
+        description: map['description'] as String?,
+      );
+}
+
+/// Social proof, dashboard-configured. Render whichever pieces are set:
+/// stars/quote card above the packages, [count] under the CTA.
+class PaywallReview {
+  const PaywallReview({this.rating, this.quote, this.author, this.count});
+
+  /// 0–5; rendered as a star row.
+  final double? rating;
+  final String? quote;
+  final String? author;
+
+  /// e.g. "Join 2M+ users" — small line under the CTA.
+  final String? count;
+
+  static PaywallReview fromMap(Map<Object?, Object?> map) => PaywallReview(
+        rating: (map['rating'] as num?)?.toDouble(),
+        quote: map['quote'] as String?,
+        author: map['author'] as String?,
+        count: map['count'] as String?,
+      );
+}
+
+/// Win-back/offer presentation: anchor price struck through on the
+/// highlighted package, urgency line above the CTA.
+class PaywallOffer {
+  const PaywallOffer({this.strikethroughPrice, this.urgencyText});
+
+  final String? strikethroughPrice;
+  final String? urgencyText;
+
+  static PaywallOffer fromMap(Map<Object?, Object?> map) => PaywallOffer(
+        strikethroughPrice: map['strikethroughPrice'] as String?,
+        urgencyText: map['urgencyText'] as String?,
+      );
+}
+
+/// Footer links, dashboard-configured. When a URL is set open it directly;
+/// otherwise run the host app's own terms/privacy handler.
+class PaywallFooter {
+  const PaywallFooter({
+    required this.showRestore,
+    required this.showTerms,
+    required this.showPrivacy,
+    this.termsUrl,
+    this.privacyUrl,
+  });
+
+  final bool showRestore;
+  final bool showTerms;
+  final bool showPrivacy;
+  final String? termsUrl;
+  final String? privacyUrl;
+
+  static PaywallFooter fromMap(Map<Object?, Object?> map) => PaywallFooter(
+        // Absent footer (legacy config) means "show all three", so a missing
+        // flag defaults to shown rather than hidden.
+        showRestore: map['showRestore'] as bool? ?? true,
+        showTerms: map['showTerms'] as bool? ?? true,
+        showPrivacy: map['showPrivacy'] as bool? ?? true,
+        termsUrl: map['termsUrl'] as String?,
+        privacyUrl: map['privacyUrl'] as String?,
+      );
+}
+
+/// Remote paywall render contract — the app draws this with its own
+/// components; prices still come from the store (StoreKit / Play Billing) so
+/// the display never disagrees with the charge.
+class PaywallConfig {
+  const PaywallConfig({
+    required this.template,
+    this.mode,
+    required this.headline,
+    this.subheadline,
+    this.features = const [],
+    required this.ctaLabel,
+    this.highlightPackageId,
+    this.badgeText,
+    this.accent,
+    this.heroImageUrl,
+    this.review,
+    this.offer,
+    this.footer,
+  });
+
+  /// Layout — the screen structure to render. Known values: "focus",
+  /// "feature-list", "minimal", "hero", "timeline", "plans", "feature-grid",
+  /// "offer", "reveal". Kept as a plain string so a newer dashboard adding a
+  /// layout never breaks parsing — fall back to a default layout for values
+  /// you don't recognize.
+  final String template;
+
+  /// Color scheme: "dark" or "light". Null (legacy config) = dark.
+  final String? mode;
+  final String headline;
+  final String? subheadline;
+  final List<PaywallFeature> features;
+  final String ctaLabel;
+
+  /// packageId of the visually highlighted package.
+  final String? highlightPackageId;
+
+  /// Badge on the highlighted package, e.g. "SAVE 17%".
+  final String? badgeText;
+
+  /// Accent hex like "#6478ff"; fall back to the app theme when absent.
+  final String? accent;
+
+  /// Hero image URL rendered above the headline in place of the icon tile.
+  final String? heroImageUrl;
+  final PaywallReview? review;
+  final PaywallOffer? offer;
+
+  /// Null (legacy config) = show all three footer links.
+  final PaywallFooter? footer;
+
+  static PaywallConfig fromMap(Map<Object?, Object?> map) {
+    final review = map['review'] as Map<Object?, Object?>?;
+    final offer = map['offer'] as Map<Object?, Object?>?;
+    final footer = map['footer'] as Map<Object?, Object?>?;
+    return PaywallConfig(
+      template: map['template'] as String? ?? '',
+      mode: map['mode'] as String?,
+      headline: map['headline'] as String? ?? '',
+      subheadline: map['subheadline'] as String?,
+      features: (map['features'] as List<Object?>? ?? const [])
+          .whereType<Map<Object?, Object?>>()
+          .map(PaywallFeature.fromMap)
+          .toList(),
+      ctaLabel: map['ctaLabel'] as String? ?? '',
+      highlightPackageId: map['highlightPackageId'] as String?,
+      badgeText: map['badgeText'] as String?,
+      accent: map['accent'] as String?,
+      heroImageUrl: map['heroImageUrl'] as String?,
+      review: review == null ? null : PaywallReview.fromMap(review),
+      offer: offer == null ? null : PaywallOffer.fromMap(offer),
+      footer: footer == null ? null : PaywallFooter.fromMap(footer),
+    );
+  }
+}
+
+/// Remote paywall design attached to a placement.
+class PlacementPaywall {
+  const PlacementPaywall({
+    required this.paywallId,
+    required this.name,
+    required this.config,
+  });
+
+  final String paywallId;
+  final String name;
+  final PaywallConfig config;
+
+  static PlacementPaywall fromMap(Map<Object?, Object?> map) =>
+      PlacementPaywall(
+        paywallId: map['paywallId'] as String? ?? '',
+        name: map['name'] as String? ?? '',
+        config: PaywallConfig.fromMap(
+            (map['config'] as Map<Object?, Object?>?) ?? const {}),
+      );
+}
+
 class PlacementResolution {
   const PlacementResolution({
     required this.status,
@@ -246,18 +421,21 @@ class PlacementResolution {
   final int revision;
   final PlacementOffering offering;
 
-  /// Remote paywall render contract — your app renders it in v1.
-  final Map<Object?, Object?>? paywall;
+  /// Remote paywall render contract — your app renders it in v1. Null when
+  /// the placement has no paywall attached.
+  final PlacementPaywall? paywall;
 
-  static PlacementResolution fromMap(Map<Object?, Object?> map) =>
-      PlacementResolution(
-        status: map['status'] as String? ?? '',
-        placementKey: map['placementKey'] as String? ?? '',
-        revision: map['revision'] as int? ?? 0,
-        offering: PlacementOffering.fromMap(
-            (map['offering'] as Map<Object?, Object?>?) ?? const {}),
-        paywall: map['paywall'] as Map<Object?, Object?>?,
-      );
+  static PlacementResolution fromMap(Map<Object?, Object?> map) {
+    final paywall = map['paywall'] as Map<Object?, Object?>?;
+    return PlacementResolution(
+      status: map['status'] as String? ?? '',
+      placementKey: map['placementKey'] as String? ?? '',
+      revision: map['revision'] as int? ?? 0,
+      offering: PlacementOffering.fromMap(
+          (map['offering'] as Map<Object?, Object?>?) ?? const {}),
+      paywall: paywall == null ? null : PlacementPaywall.fromMap(paywall),
+    );
+  }
 }
 
 /// A background failure the SDK swallowed rather than surfacing.

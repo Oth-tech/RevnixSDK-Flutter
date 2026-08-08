@@ -300,6 +300,142 @@ void main() {
 
       expect(resolution.revision, 3);
       expect(resolution.offering.packages.single.productId, 'pro.monthly');
+      // No paywall attached to this placement.
+      expect(resolution.paywall, isNull);
+    });
+
+    test('a paywall parses the full template contract', () async {
+      // Everything the dashboard's template feature can set: a post-legacy
+      // layout, light mode, review + offer blocks, and footer URLs.
+      mock((call) => call.method == 'configure'
+          ? null
+          : {
+              'status': 'ok',
+              'placementKey': 'onboarding',
+              'revision': 5,
+              'offering': {
+                'offeringId': 'off_1',
+                'displayName': 'Default',
+                'packages': [
+                  {'packageId': 'pkg_1', 'productId': 'pro.yearly'},
+                ],
+              },
+              'paywall': {
+                'paywallId': 'pw_1',
+                'name': 'Winter offer',
+                'config': {
+                  'template': 'timeline',
+                  'mode': 'light',
+                  'headline': 'Go Pro',
+                  'subheadline': 'Everything unlocked',
+                  'features': [
+                    {'icon': 'bolt', 'title': 'Fast', 'description': 'Quick'},
+                    {'title': 'Icon-less'},
+                  ],
+                  'ctaLabel': 'Start free trial',
+                  'highlightPackageId': 'pkg_1',
+                  'badgeText': 'SAVE 17%',
+                  'accent': '#6478ff',
+                  'heroImageUrl': 'https://cdn.example/hero.png',
+                  'review': {
+                    'rating': 4.8,
+                    'quote': 'Changed my life',
+                    'author': 'Sam',
+                    'count': 'Join 2M+ users',
+                  },
+                  'offer': {
+                    'strikethroughPrice': r'$79.99',
+                    'urgencyText': 'Ends tonight',
+                  },
+                  'footer': {
+                    'showRestore': true,
+                    'showTerms': true,
+                    'showPrivacy': false,
+                    'termsUrl': 'https://example.com/terms',
+                  },
+                },
+              },
+            });
+      final revnix = await client();
+      final paywall = (await revnix.resolvePlacement('onboarding')).paywall!;
+
+      expect(paywall.paywallId, 'pw_1');
+      expect(paywall.name, 'Winter offer');
+      final config = paywall.config;
+      expect(config.template, 'timeline');
+      expect(config.mode, 'light');
+      expect(config.headline, 'Go Pro');
+      expect(config.subheadline, 'Everything unlocked');
+      expect(config.features, hasLength(2));
+      expect(config.features.first.icon, 'bolt');
+      expect(config.features.first.description, 'Quick');
+      expect(config.features.last.icon, isNull);
+      expect(config.features.last.title, 'Icon-less');
+      expect(config.ctaLabel, 'Start free trial');
+      expect(config.highlightPackageId, 'pkg_1');
+      expect(config.badgeText, 'SAVE 17%');
+      expect(config.accent, '#6478ff');
+      expect(config.heroImageUrl, 'https://cdn.example/hero.png');
+      expect(config.review!.rating, 4.8);
+      expect(config.review!.quote, 'Changed my life');
+      expect(config.review!.author, 'Sam');
+      expect(config.review!.count, 'Join 2M+ users');
+      expect(config.offer!.strikethroughPrice, r'$79.99');
+      expect(config.offer!.urgencyText, 'Ends tonight');
+      expect(config.footer!.showRestore, isTrue);
+      expect(config.footer!.showTerms, isTrue);
+      expect(config.footer!.showPrivacy, isFalse);
+      expect(config.footer!.termsUrl, 'https://example.com/terms');
+      expect(config.footer!.privacyUrl, isNull);
+    });
+
+    test('a legacy paywall config parses without the new fields', () async {
+      // Pre-templates configs have only the original shape — no mode, review,
+      // offer, or footer. They must keep parsing unchanged.
+      mock((call) => call.method == 'configure'
+          ? null
+          : {
+              'status': 'ok',
+              'placementKey': 'onboarding',
+              'revision': 2,
+              'offering': {
+                'offeringId': 'off_1',
+                'displayName': 'Default',
+                'packages': <Object?>[],
+              },
+              'paywall': {
+                'paywallId': 'pw_legacy',
+                'name': 'Original',
+                'config': {
+                  'template': 'focus',
+                  'headline': 'Unlock everything',
+                  'features': [
+                    {'title': 'All access'},
+                  ],
+                  'ctaLabel': 'Continue',
+                },
+              },
+            });
+      final revnix = await client();
+      final config = (await revnix.resolvePlacement('onboarding')).paywall!.config;
+
+      expect(config.template, 'focus');
+      // Absent mode = legacy dark; the model surfaces null and lets the
+      // renderer default.
+      expect(config.mode, isNull);
+      expect(config.headline, 'Unlock everything');
+      expect(config.features.single.title, 'All access');
+      expect(config.ctaLabel, 'Continue');
+      expect(config.review, isNull);
+      expect(config.offer, isNull);
+      expect(config.footer, isNull);
+
+      // A template value newer than this SDK must not throw — the layout
+      // union will grow again.
+      expect(
+        PaywallConfig.fromMap(const {'template': 'holo-carousel'}).template,
+        'holo-carousel',
+      );
     });
 
     test('telemetry beacons forward their arguments', () async {

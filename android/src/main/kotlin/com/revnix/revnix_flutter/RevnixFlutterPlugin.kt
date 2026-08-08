@@ -19,6 +19,14 @@ import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import kotlin.time.Duration.Companion.milliseconds
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.longOrNull
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -263,7 +271,22 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                 mapOf("packageId" to pkg.packageId, "productId" to pkg.productId)
             },
         ),
+        // Passed through loose — Dart owns the typed PaywallConfig parse, so a
+        // new dashboard field never requires a native release.
+        "paywall" to bridgeValue(resolution.paywall),
     )
+
+    /** Loose JSON → StandardMessageCodec-safe values (maps/lists/primitives). */
+    private fun bridgeValue(element: JsonElement?): Any? = when (element) {
+        null, is JsonNull -> null
+        is JsonObject -> element.mapValues { bridgeValue(it.value) }
+        is JsonArray -> element.map { bridgeValue(it) }
+        is JsonPrimitive -> when {
+            element.isString -> element.content
+            else -> element.booleanOrNull ?: element.longOrNull
+                ?: element.doubleOrNull ?: element.content
+        }
+    }
 
     /**
      * The bridge's real contract: a stable code plus `isRetryable`, so Dart can
