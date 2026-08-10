@@ -3,12 +3,13 @@
 Flutter plugin for [Revnix](https://revnix.com) — subscriptions and
 entitlements, wrapping the native SDKs rather than reimplementing them.
 
-- **iOS** → [`revnix-swift`](https://github.com/Oth-tech/revnix-swift) (StoreKit 2)
-- **Android** → [`revnix-kotlin`](https://github.com/Oth-tech/revnix-kotlin) (Play Billing 8)
+- **iOS** → [`RevnixSDK-iOS`](https://github.com/Oth-tech/RevnixSDK-iOS) (StoreKit 2)
+- **Android** → [`RevnixSDK-Android`](https://github.com/Oth-tech/RevnixSDK-Android) (Play Billing 8)
 
 > Until those SDKs ship to CocoaPods / Maven Central, their 0.2.0 sources are
 > **vendored** inside this plugin (`ios/…/Revnix/`, `android/…/com/revnix/`)
 > so the plugin builds standalone. Fix native bugs upstream, then re-copy.
+> See [`android/src/main/kotlin/com/revnix/VENDORED.md`](android/src/main/kotlin/com/revnix/VENDORED.md).
 
 ## Why a wrapper and not a Dart client
 
@@ -18,8 +19,8 @@ platform means one more place for it to silently rot. It already happened once:
 the Swift port dropped a TTL bypass and broke post-purchase unlock until a test
 caught it.
 
-So the policy lives in the native SDKs, where it is tested (27 cases in
-revnix-swift, 26 in revnix-core). This plugin's job is to not lose it in
+So the policy lives in the native SDKs, where it is tested (32 cases in
+RevnixSDK-iOS, 31 in `revnix-core`). This plugin's job is to not lose it in
 translation.
 
 ## Quick start
@@ -91,6 +92,29 @@ if (experiment != null) {
 }
 ```
 
+### Targeting: `setAttributes`
+
+A test can be narrowed to an *audience* — conditions over customer attributes.
+`setAttributes` supplies the facts those conditions read, which for a
+mobile-only app is the only place they exist:
+
+```dart
+await revnix.setAttributes({
+  'country': 'US',
+  'app_version': '4.2.0',
+  'lifetime_orders': 3,
+  'stale_key': null,   // null deletes the key
+});
+```
+
+Values must be `String`, `num`, or `null`. This awaits the write and throws on
+failure, unlike the fire-and-forget beacons, because the next
+`resolvePlacement` may depend on it. Set an audience's attributes *before* the
+first resolve on a covered placement — eligibility is checked at that resolve.
+`email` and `username` are reserved (secret key, from your server), and an
+attribute your backend already set cannot be changed from a device; both
+reject the whole batch rather than applying part of it.
+
 ## Errors
 
 Every native failure arrives as a typed `RevnixException` with `isRetryable`
@@ -115,12 +139,16 @@ gates fail closed.
 
 ## Status
 
-**Not published.** The Dart layer is complete and tested (`flutter test` — 29
-tests covering error rehydration, the `stale` flag, gate fail-closed behaviour,
-and wire marshalling). The native plugin code is written but **cannot be
-compiled yet**: it depends on `Revnix` (CocoaPods) and
-`com.revnix:revnix-android` (Maven), neither of which is published. Publishing
-the two native SDKs unblocks it.
+**Builds; not published.** The plugin compiles and runs end to end on both
+platforms — the native sources are vendored (see the note at the top), so it
+no longer depends on unpublished CocoaPods/Maven artifacts. The Dart layer is
+complete and tested (`flutter test` — 29 tests covering error rehydration, the
+`stale` flag, gate fail-closed behaviour, and wire marshalling).
+
+What remains is distribution: `revnix_flutter` 0.2.0 is not on pub.dev, so it
+can only be consumed as a path or git dependency today. When the native SDKs
+reach CocoaPods and Maven Central, the vendored copies should be dropped in
+favour of real dependencies before publishing.
 
 ## v1 non-goals
 
