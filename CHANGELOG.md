@@ -10,6 +10,12 @@ A/B experiments (REV-219) — parity with `revnix-swift` 0.2.0 and
   this is attribution metadata, not something to branch on.
 - `resolvePlacement` now sends the customer id (`?customer=`) so the server
   can pin a sticky variant; older servers ignore the parameter.
+- `setAttributes(Map<String, Object?>)` (REV-033) — the write half of
+  audience targeting. String/num values upsert, `null` deletes. Awaits the
+  write and throws on failure, unlike the fire-and-forget beacons, since the
+  next `resolvePlacement` may depend on it. `email`/`username` are reserved
+  (secret key only) and a server-set attribute cannot be changed from a
+  device; both reject the whole batch.
 
 ## 0.1.0
 
