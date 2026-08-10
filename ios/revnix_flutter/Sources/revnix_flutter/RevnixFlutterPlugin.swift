@@ -101,6 +101,10 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
                         placementKey: args["placementKey"] as? String,
                         paywallId: args["paywallId"] as? String)
                     result(nil)
+                case "setAttributes":
+                    let raw = args["attributes"] as? [String: Any] ?? [:]
+                    try await client.setAttributes(Self.jsonValues(raw))
+                    result(nil)
                 default:
                     result(FlutterMethodNotImplemented)
                 }
@@ -224,10 +228,33 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
             // Passed through loose — Dart owns the typed PaywallConfig parse,
             // so a new dashboard field never requires a native release.
             "paywall": resolution.paywall.map(Self.bridgeValue),
+            // REV-219. Spelled out field by field — the paywall key was once
+            // dropped right here, and a lost experiment would silently corrupt
+            // A/B attribution.
+            "experiment": resolution.experiment.map { exp in
+                ["key": exp.key, "variantId": exp.variantId] as [String: Any?]
+            },
         ]
     }
 
     /// Loose JSON → StandardMessageCodec-safe values (maps/lists/primitives).
+    /// Attribute values arrive from Dart as NSString/NSNumber/NSNull. Anything
+    /// else is a caller bug and is dropped rather than guessed at — the server
+    /// would reject it with a 400 anyway.
+    private static func jsonValues(_ raw: [String: Any]) -> [String: JSONValue] {
+        var out: [String: JSONValue] = [:]
+        for (key, value) in raw {
+            if value is NSNull {
+                out[key] = .null
+            } else if let text = value as? String {
+                out[key] = .string(text)
+            } else if let number = value as? NSNumber {
+                out[key] = .number(number.doubleValue)
+            }
+        }
+        return out
+    }
+
     private static func bridgeValue(_ value: JSONValue) -> Any {
         switch value {
         case .string(let s): return s

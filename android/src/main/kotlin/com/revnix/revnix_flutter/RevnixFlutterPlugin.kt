@@ -159,6 +159,12 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                         )
                         result.success(null)
                     }
+                    "setAttributes" -> {
+                        active.setAttributes(
+                            call.argument<Map<String, Any?>>("attributes").orEmpty()
+                        )
+                        result.success(null)
+                    }
                     else -> result.notImplemented()
                 }
             } catch (err: RevnixError) {
@@ -274,6 +280,12 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         // Passed through loose — Dart owns the typed PaywallConfig parse, so a
         // new dashboard field never requires a native release.
         "paywall" to bridgeValue(resolution.paywall),
+        // REV-219. Spelled out field by field — the paywall key was once
+        // dropped right here, and a lost experiment would silently corrupt
+        // A/B attribution.
+        "experiment" to resolution.experiment?.let { exp ->
+            mapOf("key" to exp.key, "variantId" to exp.variantId)
+        },
     )
 
     /** Loose JSON → StandardMessageCodec-safe values (maps/lists/primitives). */

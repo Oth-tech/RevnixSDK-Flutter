@@ -138,6 +138,14 @@ public struct PlacementOffering: Codable, Sendable, Equatable {
     public let packages: [PlacementPackage]
 }
 
+/// REV-219: the running experiment's sticky assignment for this customer.
+/// Attribution only — the served `offering`/`paywall` are already the
+/// variant's, so the app just renders what it gets.
+public struct PlacementExperiment: Codable, Sendable, Equatable {
+    public let key: String
+    public let variantId: String
+}
+
 public struct PlacementResolution: Codable, Sendable, Equatable {
     public let status: String
     public let placementKey: String
@@ -146,4 +154,7 @@ public struct PlacementResolution: Codable, Sendable, Equatable {
     public let offering: PlacementOffering
     /// Remote paywall render contract (see docs) — app-rendered in v1.
     public let paywall: JSONValue?
+    /// nil when no experiment applies — the server sends null, and older
+    /// servers omit the key entirely; both decode to nil.
+    public let experiment: PlacementExperiment?
 }
