@@ -1,3 +1,16 @@
+## 0.2.0
+
+A/B experiments (REV-219) — parity with `revnix-swift` 0.2.0 and
+`revnix-kotlin` 0.2.0, whose vendored copies are updated in step.
+
+- `PlacementResolution.experiment` — the running experiment's sticky
+  assignment (`PlacementExperiment`: `key`, `variantId`). Null when no
+  running experiment covers the placement (or the server predates
+  experiments); the served offering/paywall are already the variant's, so
+  this is attribution metadata, not something to branch on.
+- `resolvePlacement` now sends the customer id (`?customer=`) so the server
+  can pin a sticky variant; older servers ignore the parameter.
+
 ## 0.1.0
 
 Initial release — feature parity with `revnix-swift` 0.1.0 and

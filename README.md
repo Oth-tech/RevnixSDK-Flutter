@@ -6,7 +6,7 @@ entitlements, wrapping the native SDKs rather than reimplementing them.
 - **iOS** → [`revnix-swift`](https://github.com/Oth-tech/revnix-swift) (StoreKit 2)
 - **Android** → [`revnix-kotlin`](https://github.com/Oth-tech/revnix-kotlin) (Play Billing 8)
 
-> Until those SDKs ship to CocoaPods / Maven Central, their 0.1.0 sources are
+> Until those SDKs ship to CocoaPods / Maven Central, their 0.2.0 sources are
 > **vendored** inside this plugin (`ios/…/Revnix/`, `android/…/com/revnix/`)
 > so the plugin builds standalone. Fix native bugs upstream, then re-copy.
 
@@ -72,6 +72,25 @@ await revnix.waitForEntitlements(result.seq);
 device-side proof, so Revnix corroborates it server-side via RTDN. It is `false`
 on iOS, where the JWS verifies against Apple's chain.
 
+## A/B experiments
+
+`resolvePlacement` sends the customer id so the server can pin a sticky
+variant when a running experiment covers the placement. The served
+offering/paywall are already the variant's — render what you get. The
+assignment itself is attribution metadata:
+
+```dart
+final resolution = await revnix.resolvePlacement('onboarding');
+// Null when no running experiment covers this placement.
+final experiment = resolution.experiment;
+if (experiment != null) {
+  analytics.log('paywall_variant', {
+    'experiment': experiment.key,
+    'variant': experiment.variantId,
+  });
+}
+```
+
 ## Errors
 
 Every native failure arrives as a typed `RevnixException` with `isRetryable`
@@ -96,7 +115,7 @@ gates fail closed.
 
 ## Status
 
-**Not published.** The Dart layer is complete and tested (`flutter test` — 25
+**Not published.** The Dart layer is complete and tested (`flutter test` — 29
 tests covering error rehydration, the `stale` flag, gate fail-closed behaviour,
 and wire marshalling). The native plugin code is written but **cannot be
 compiled yet**: it depends on `Revnix` (CocoaPods) and

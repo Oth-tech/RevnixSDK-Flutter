@@ -302,6 +302,60 @@ void main() {
       expect(resolution.offering.packages.single.productId, 'pro.monthly');
       // No paywall attached to this placement.
       expect(resolution.paywall, isNull);
+      // The experiment key is ABSENT here (old native SDK / old server) —
+      // that must parse the same as an explicit null.
+      expect(resolution.experiment, isNull);
+    });
+
+    test('an experiment assignment survives the bridge', () async {
+      // The natives pass experiment as an explicit {key, variantId} map —
+      // exactly the shape mocked here. Losing it would silently corrupt A/B
+      // attribution, the same class of bug that once dropped `paywall`.
+      mock((call) => call.method == 'configure'
+          ? null
+          : {
+              'status': 'ok',
+              'placementKey': 'onboarding',
+              'revision': 7,
+              'offering': {
+                'offeringId': 'off_1',
+                'displayName': 'Variant B',
+                'packages': [
+                  {'packageId': 'pkg_1', 'productId': 'pro.yearly'},
+                ],
+              },
+              'paywall': null,
+              'experiment': {'key': 'onboarding-price', 'variantId': 'var_b'},
+            });
+      final revnix = await client();
+      final resolution = await revnix.resolvePlacement('onboarding');
+
+      expect(resolution.experiment, isNotNull);
+      expect(resolution.experiment!.key, 'onboarding-price');
+      expect(resolution.experiment!.variantId, 'var_b');
+      // The served offering is already the variant's — attribution only.
+      expect(resolution.offering.displayName, 'Variant B');
+    });
+
+    test('an explicit null experiment parses to null', () async {
+      // The bridge always includes the key; null means "no running
+      // experiment", and must not throw or fabricate an assignment.
+      mock((call) => call.method == 'configure'
+          ? null
+          : {
+              'status': 'ok',
+              'placementKey': 'onboarding',
+              'revision': 3,
+              'offering': {
+                'offeringId': 'off_1',
+                'displayName': 'Default',
+                'packages': <Object?>[],
+              },
+              'paywall': null,
+              'experiment': null,
+            });
+      final revnix = await client();
+      expect((await revnix.resolvePlacement('onboarding')).experiment, isNull);
     });
 
     test('a paywall parses the full template contract', () async {
@@ -355,9 +409,15 @@ void main() {
                   },
                 },
               },
+              'experiment': {'key': 'winter-offer-test', 'variantId': 'var_a'},
             });
       final revnix = await client();
-      final paywall = (await revnix.resolvePlacement('onboarding')).paywall!;
+      final resolution = await revnix.resolvePlacement('onboarding');
+      // Paywall and experiment must BOTH survive — one field being dropped in
+      // marshalling is the bug class this suite exists to catch.
+      expect(resolution.experiment!.key, 'winter-offer-test');
+      expect(resolution.experiment!.variantId, 'var_a');
+      final paywall = resolution.paywall!;
 
       expect(paywall.paywallId, 'pw_1');
       expect(paywall.name, 'Winter offer');

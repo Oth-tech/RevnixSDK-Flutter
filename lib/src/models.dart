@@ -405,6 +405,22 @@ class PlacementPaywall {
       );
 }
 
+/// The running experiment's sticky assignment for this customer (REV-219).
+/// Attribution only — the served offering/paywall are already the variant's,
+/// so the app just renders what it gets.
+class PlacementExperiment {
+  const PlacementExperiment({required this.key, required this.variantId});
+
+  final String key;
+  final String variantId;
+
+  static PlacementExperiment fromMap(Map<Object?, Object?> map) =>
+      PlacementExperiment(
+        key: map['key'] as String? ?? '',
+        variantId: map['variantId'] as String? ?? '',
+      );
+}
+
 class PlacementResolution {
   const PlacementResolution({
     required this.status,
@@ -412,6 +428,7 @@ class PlacementResolution {
     required this.revision,
     required this.offering,
     this.paywall,
+    this.experiment,
   });
 
   final String status;
@@ -425,8 +442,14 @@ class PlacementResolution {
   /// the placement has no paywall attached.
   final PlacementPaywall? paywall;
 
+  /// Sticky experiment assignment for this customer. Null when no running
+  /// experiment covers the placement — the server sends null, and older
+  /// servers omit the key entirely; both parse to null.
+  final PlacementExperiment? experiment;
+
   static PlacementResolution fromMap(Map<Object?, Object?> map) {
     final paywall = map['paywall'] as Map<Object?, Object?>?;
+    final experiment = map['experiment'] as Map<Object?, Object?>?;
     return PlacementResolution(
       status: map['status'] as String? ?? '',
       placementKey: map['placementKey'] as String? ?? '',
@@ -434,6 +457,8 @@ class PlacementResolution {
       offering: PlacementOffering.fromMap(
           (map['offering'] as Map<Object?, Object?>?) ?? const {}),
       paywall: paywall == null ? null : PlacementPaywall.fromMap(paywall),
+      experiment:
+          experiment == null ? null : PlacementExperiment.fromMap(experiment),
     );
   }
 }

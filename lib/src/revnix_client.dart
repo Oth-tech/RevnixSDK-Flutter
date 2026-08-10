@@ -158,6 +158,17 @@ class RevnixClient {
         'paywallId': ?paywallId,
       });
 
+  /// Set attributes on the current customer. Attributes are what A/B-test
+  /// audiences target — set `country`, `app_version`, `locale`, or any custom
+  /// key you want to segment on. A null value deletes the key.
+  ///
+  /// Throws, unlike the fire-and-forget beacons: the next placement resolve
+  /// may depend on these. `email` and `username` are reserved (secret key
+  /// only), and an attribute your backend already set cannot be changed from
+  /// a device.
+  Future<void> setAttributes(Map<String, Object?> attributes) =>
+      _invoke<void>('setAttributes', {'attributes': attributes});
+
   /// Background failures the SDK swallowed (queue drains, telemetry beacons).
   Stream<RevnixDiagnostic> get diagnostics => _diagnosticsChannel
       .receiveBroadcastStream()
