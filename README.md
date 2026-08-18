@@ -115,6 +115,40 @@ first resolve on a covered placement — eligibility is checked at that resolve.
 attribute your backend already set cannot be changed from a device; both
 reject the whole batch rather than applying part of it.
 
+## Paywall UI
+
+`RevnixPaywall` renders a dashboard-published paywall config as a full screen
+— pure Dart over Flutter's own widgets, kept in lockstep with the dashboard's
+paywall-builder preview and the React Native renderer. The config decides
+layout, copy, accent, and badge; **you** supply package titles and localized
+prices from the store, so the display never disagrees with the charge.
+
+```dart
+final resolution = await revnix.resolvePlacement('onboarding');
+final paywall = resolution.paywall!;
+
+RevnixPaywall(
+  config: paywall.config,
+  packages: [
+    // priceLabel must be the store's localized price string.
+    RevnixPaywallPackage(packageId: 'monthly', title: 'Monthly', priceLabel: r'$9.99'),
+    RevnixPaywallPackage(packageId: 'annual', title: 'Annual', priceLabel: r'$59.99'),
+  ],
+  onPurchase: (packageId) { /* run the store purchase, then registerPurchase */ },
+  onRestore: () { /* restore purchases */ },
+  // One paywall.viewed per mount — the funnel's "Paywall displayed" stage.
+  client: revnix,
+  placementKey: 'onboarding',
+  paywallId: paywall.paywallId,
+)
+```
+
+Selection is controlled (`selectedPackageId` + `onSelectPackage`) or managed
+internally; `loading: true` turns the CTA into a spinner. The plugin adds no
+`url_launcher` dependency, so a dashboard-configured Terms/Privacy URL is
+handed to your `onOpenUrl` callback to open — an explicit `onTerms`/`onPrivacy`
+handler always wins over the config URL.
+
 ## Errors
 
 Every native failure arrives as a typed `RevnixException` with `isRetryable`
@@ -152,7 +186,6 @@ favour of real dependencies before publishing.
 
 ## v1 non-goals
 
-- Paywall UI rendering — `resolvePlacement` ships the config, your app renders it.
 - `identify` / `alias` — server-proxied by design.
 - Web — Dart's `int` is a double on `dart2js`, which would lose precision on
   unix-ms timestamps and ledger cursors. Mobile only.
