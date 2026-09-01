@@ -40,15 +40,22 @@ void main() {
   );
   const packages = [annual, monthly];
 
-  Widget host(PaywallBlockDoc doc, {void Function(String)? onPurchase, VoidCallback? onRestore}) =>
+  Widget host(
+    PaywallBlockDoc doc, {
+    void Function(String)? onPurchase,
+    VoidCallback? onRestore,
+    void Function(String)? onSelect,
+    String? selectedPackageId = 'annual',
+  }) =>
       MaterialApp(
         home: Scaffold(
           body: RevnixPaywallBlockScreen(
             ctx: BlockRenderContext(
               doc: doc,
               packages: packages,
-              selectedPackageId: 'annual',
+              selectedPackageId: selectedPackageId,
               onPurchase: onPurchase ?? (_) {},
+              onSelect: onSelect ?? (_) {},
               onRestore: onRestore,
             ),
           ),
@@ -588,6 +595,153 @@ void main() {
       expect(find.text('Annual'), findsOneWidget);
       expect(find.text('Monthly'), findsOneWidget);
       expect(find.text(r'$59.99'), findsOneWidget);
+    });
+
+    testWidgets('a products card reports the tapped package', (tester) async {
+      String? selected;
+      final doc = PaywallBlockDoc.parse(
+        docWith([
+          {'id': 'p', 'type': 'products'},
+        ]),
+      );
+      await tester.pumpWidget(host(doc!, onSelect: (id) => selected = id));
+      await tester.tap(find.text('Monthly'));
+      expect(selected, 'monthly');
+    });
+
+    testWidgets('a repeat card reports the tapped instance', (tester) async {
+      String? selected;
+      final doc = PaywallBlockDoc.parse(
+        docWith([
+          {
+            'id': 'c',
+            'type': 'card',
+            'repeat': 'packages',
+            'children': [
+              {'id': 't', 'type': 'text', 'text': '{title}'},
+            ],
+          },
+        ]),
+      );
+      await tester.pumpWidget(host(doc!, onSelect: (id) => selected = id));
+      await tester.tap(find.text('Monthly'));
+      expect(selected, 'monthly');
+    });
+
+    testWidgets('a packageIndex-pinned card reports its own package', (tester) async {
+      String? selected;
+      final doc = PaywallBlockDoc.parse(
+        docWith([
+          {
+            'id': 'c',
+            'type': 'card',
+            'packageIndex': 1,
+            'children': [
+              {'id': 't', 'type': 'text', 'text': '{title}'},
+            ],
+          },
+        ]),
+      );
+      await tester.pumpWidget(host(doc!, onSelect: (id) => selected = id));
+      await tester.tap(find.text('Monthly'));
+      expect(selected, 'monthly');
+    });
+
+    testWidgets('a card naming no package is decoration and stays inert', (tester) async {
+      var selections = 0;
+      final doc = PaywallBlockDoc.parse(
+        docWith([
+          {
+            'id': 'c',
+            'type': 'card',
+            'children': [
+              {'id': 't', 'type': 'text', 'text': 'Decoration'},
+            ],
+          },
+        ]),
+      );
+      await tester.pumpWidget(host(doc!, onSelect: (_) => selections += 1));
+      await tester.tap(find.text('Decoration'));
+      expect(selections, 0);
+    });
+
+    testWidgets('the selected products card carries the highlight treatment', (tester) async {
+      final doc = PaywallBlockDoc.parse(
+        docWith([
+          {'id': 'p', 'type': 'products', 'highlightSub': 'Best value'},
+        ]),
+      );
+      // The highlight follows the selection, so it lands on the selected card
+      // rather than being pinned to the first package.
+      await tester.pumpWidget(host(doc!, selectedPackageId: 'monthly'));
+      expect(find.text('Best value'), findsOneWidget);
+      final card = find.ancestor(of: find.text('Best value'), matching: find.byType(Column)).first;
+      expect(find.descendant(of: card, matching: find.text('Monthly')), findsOneWidget);
+      expect(find.descendant(of: card, matching: find.text('Annual')), findsNothing);
+    });
+
+    testWidgets('a repeat card applies selectedStyle to the selected instance', (tester) async {
+      final doc = PaywallBlockDoc.parse(
+        docWith([
+          {
+            'id': 'c',
+            'type': 'card',
+            'repeat': 'packages',
+            'style': {'radius': 4},
+            'selectedStyle': {'radius': 20},
+            'children': [
+              {'id': 't', 'type': 'text', 'text': '{title}'},
+            ],
+          },
+        ]),
+      );
+      await tester.pumpWidget(host(doc!, selectedPackageId: 'monthly'));
+      double radiusOf(String title) {
+        final box = tester
+            .widgetList<Container>(
+              find.ancestor(of: find.text(title), matching: find.byType(Container)),
+            )
+            .map((c) => c.decoration)
+            .whereType<BoxDecoration>()
+            .map((d) => d.borderRadius)
+            .whereType<BorderRadius>()
+            .first;
+        return box.topLeft.x;
+      }
+
+      // selectedStyle merges over the base style on the selected instance
+      // only — the other keeps the base radius.
+      expect(radiusOf('Monthly'), 20.0);
+      expect(radiusOf('Annual'), 4.0);
+    });
+
+    testWidgets('a pinned card takes selectedStyle when it is the selected one', (tester) async {
+      Map<String, Object?> pinned(int index) => {
+            'id': 'c$index',
+            'type': 'card',
+            'packageIndex': index,
+            'style': {'radius': 4},
+            'selectedStyle': {'radius': 20},
+            'children': [
+              {'id': 't$index', 'type': 'text', 'text': '{title}'},
+            ],
+          };
+      final doc = PaywallBlockDoc.parse(docWith([pinned(0), pinned(1)]));
+      await tester.pumpWidget(host(doc!, selectedPackageId: 'monthly'));
+      double radiusOf(String title) => tester
+          .widgetList<Container>(
+            find.ancestor(of: find.text(title), matching: find.byType(Container)),
+          )
+          .map((c) => c.decoration)
+          .whereType<BoxDecoration>()
+          .map((d) => d.borderRadius)
+          .whereType<BorderRadius>()
+          .first
+          .topLeft
+          .x;
+      // Tapping a pinned card changes what the CTA buys, so it has to show it.
+      expect(radiusOf('Monthly'), 20.0);
+      expect(radiusOf('Annual'), 4.0);
     });
 
     testWidgets('a list block renders its items with icons', (tester) async {

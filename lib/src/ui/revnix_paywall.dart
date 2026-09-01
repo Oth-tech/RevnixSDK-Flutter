@@ -292,6 +292,7 @@ class _RevnixPaywallState extends State<RevnixPaywall> {
         onPurchase: (id) {
           if (!widget.loading) widget.onPurchase(id);
         },
+        onSelect: _select,
         onRestore: widget.onRestore,
         onTerms: widget.onTerms,
         onPrivacy: widget.onPrivacy,

@@ -925,6 +925,7 @@ class BlockRenderContext {
     this.footerTermsUrl,
     this.footerPrivacyUrl,
     required this.onPurchase,
+    required this.onSelect,
     this.onRestore,
     this.onTerms,
     this.onPrivacy,
@@ -944,6 +945,10 @@ class BlockRenderContext {
   final String? footerTermsUrl;
   final String? footerPrivacyUrl;
   final void Function(String packageId) onPurchase;
+
+  /// Reports a plan card tap. Selection is the paywall's own state, so a
+  /// design's plan cards work without the host wiring anything.
+  final void Function(String packageId) onSelect;
   final VoidCallback? onRestore;
   final VoidCallback? onTerms;
   final VoidCallback? onPrivacy;
@@ -1443,7 +1448,14 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
           ],
         );
       }
-      final styled = _styled(hl ? block.highlightStyle : block.cardStyle, card, skipDecoration: true);
+      // The whole card is the target, not just its glyphs — a plan row is
+      // mostly padding, and tapping beside the price must select. Opaque so
+      // the transparent padding takes the hit too.
+      final styled = GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => ctx.onSelect(pkg.packageId),
+        child: _styled(hl ? block.highlightStyle : block.cardStyle, card, skipDecoration: true),
+      );
       cards.add(row ? Expanded(child: styled) : styled);
     }
 
@@ -1487,6 +1499,7 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
               each != null && each.packageId == selected
                   ? (block.style ?? const BlockStyle()).merging(block.selectedStyle)
                   : block.style,
+              selects: each?.packageId,
             ),
         ],
       );
@@ -1496,11 +1509,28 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
     // than rendered with unresolved tags.
     final index = block.packageIndex;
     if (index != null && index >= ctx.packages.length) return null;
-    final ctxPackage = index != null ? ctx.packages[index] : pkg;
-    return _container(block, ctxPackage, block.style);
+    final pinned = index != null ? ctx.packages[index] : null;
+    final ctxPackage = pinned ?? pkg;
+    // A card pinned to a package doubles as its selection target — that is how
+    // hand-styled plan rows (a highlighted annual beside a plain monthly)
+    // become tappable without a products block. It takes `selectedStyle` when
+    // selected for the same reason a repeated card does, or tapping it would
+    // change what the CTA buys with no visible answer. A card that names no
+    // package is decoration and stays inert.
+    final selected = ctx.selectedPackageId ??
+        (ctx.packages.isEmpty ? null : ctx.packages.first.packageId);
+    final style = pinned != null && pinned.packageId == selected
+        ? (block.style ?? const BlockStyle()).merging(block.selectedStyle)
+        : block.style;
+    return _container(block, ctxPackage, style, selects: pinned?.packageId);
   }
 
-  Widget _container(CardBlock block, RevnixPaywallPackage? pkg, BlockStyle? style) {
+  Widget _container(
+    CardBlock block,
+    RevnixPaywallPackage? pkg,
+    BlockStyle? style, {
+    String? selects,
+  }) {
     final gap = block.style?.gap ?? 10;
     final pairs = _renderPairs(block.children, pkg);
     final children = [for (final pair in pairs) pair.$2];
@@ -1540,7 +1570,13 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
           children: _withGaps(pairs, gap, horizontal: false),
         );
     }
-    return _styled(style, body);
+    final styled = _styled(style, body);
+    if (selects == null) return styled;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => ctx.onSelect(selects),
+      child: styled,
+    );
   }
 
   /// Inserts the gap and honours each child's flex/basis — a carousel card
