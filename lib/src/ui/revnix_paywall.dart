@@ -23,6 +23,7 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../revnix_client.dart';
+import 'paywall_blocks.dart';
 
 /// One purchasable row. [priceLabel] must come from the store (localized).
 @immutable
@@ -31,11 +32,26 @@ class RevnixPaywallPackage {
     required this.packageId,
     required this.title,
     required this.priceLabel,
+    this.period,
+    this.amountMinor,
+    this.currency,
   });
 
   final String packageId;
   final String title;
   final String priceLabel;
+
+  /// Renewal cycle from the product ("annual", "monthly", "weekly", …). Drives
+  /// the `{period}` / `{period_short}` tags on a designed paywall; null for
+  /// lifetime and one-time products.
+  final String? period;
+
+  /// The store's price in MINOR units, with its currency — what
+  /// `{price_per_month}` and `{save_percent}` are computed from. Omit them and
+  /// those tags stay visible rather than resolving to a wrong number; see
+  /// [revnixMinorUnits] before converting from major units.
+  final int? amountMinor;
+  final String? currency;
 }
 
 /// Colors the paywall renders with. Every field is optional — a null field
@@ -248,9 +264,50 @@ class _RevnixPaywallState extends State<RevnixPaywall> {
     widget.onSelectPackage?.call(packageId);
   }
 
+  /// The designed-paywall path. The document carries its own palette, so the
+  /// classic theme and the `template` layout play no part here.
+  Widget _buildBlocks(PaywallBlockDoc doc) {
+    final shown = widget.packages;
+    String? fallback;
+    for (final p in shown) {
+      if (p.packageId == widget.config.highlightPackageId) {
+        fallback = p.packageId;
+        break;
+      }
+    }
+    fallback ??= shown.isEmpty ? null : shown.first.packageId;
+    final selectedId = widget.selectedPackageId ??
+        (_internalSelected != null && shown.any((p) => p.packageId == _internalSelected)
+            ? _internalSelected
+            : fallback);
+
+    return RevnixPaywallBlockScreen(
+      ctx: BlockRenderContext(
+        doc: doc,
+        packages: shown,
+        selectedPackageId: selectedId,
+        heroImageUrl: widget.config.heroImageUrl,
+        footerTermsUrl: widget.config.footer?.termsUrl,
+        footerPrivacyUrl: widget.config.footer?.privacyUrl,
+        onPurchase: (id) {
+          if (!widget.loading) widget.onPurchase(id);
+        },
+        onRestore: widget.onRestore,
+        onTerms: widget.onTerms,
+        onPrivacy: widget.onPrivacy,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final config = widget.config;
+
+    // Precedence: a designed paywall (`config.blocks`) wins over the classic
+    // layouts below, which stay the fallback for every paywall published
+    // before the block builder — so anything already live renders unchanged.
+    final blockDoc = PaywallBlockDoc.parse(config.blocks);
+    if (blockDoc != null) return _buildBlocks(blockDoc);
 
     // Base scheme comes from the dashboard config (mode: dark|light, absent =
     // dark for legacy configs); the host's explicit theme override wins on top.
