@@ -185,6 +185,7 @@ class RevnixPaywall extends StatefulWidget {
     this.onRestore,
     this.onTerms,
     this.onPrivacy,
+    this.onClose,
     this.onOpenUrl,
     this.theme,
     this.client,
@@ -210,6 +211,13 @@ class RevnixPaywall extends StatefulWidget {
   final VoidCallback? onRestore;
   final VoidCallback? onTerms;
   final VoidCallback? onPrivacy;
+
+  /// Dismissal (REV-252). The HOST performs it — only the app knows whether
+  /// that means popping a route, closing a dialog, or advancing onboarding —
+  /// so the paywall never dismisses itself. Omit it and no close is drawn at
+  /// all: a dead close button is worse than none. Passing [client] as well
+  /// reports `paywall.closed` against this display's own view id.
+  final VoidCallback? onClose;
 
   /// Opens a dashboard-configured footer URL ([PaywallFooter.termsUrl] /
   /// [PaywallFooter.privacyUrl]). Explicit [onTerms]/[onPrivacy] handlers
@@ -250,13 +258,48 @@ class _RevnixPaywallState extends State<RevnixPaywall> {
     // surface in the purchase UI.
     final client = widget.client;
     if (client != null && !widget.disableViewTracking) {
-      unawaited(client
+      final report = client
           .logPaywallShown(
             placementKey: widget.placementKey,
             paywallId: widget.paywallId,
           )
-          .then((_) {}, onError: (_) {}));
+          .then<String?>((id) => id, onError: (_) => null);
+      _viewReport = report;
+      // Nothing on screen depends on the view id, so the future is held rather
+      // than awaited into state — rebuilding the paywall the instant its view
+      // is recorded would be a pointless frame.
+      unawaited(report);
     }
+  }
+
+  /// The in-flight view beacon (REV-252). The close AWAITS this rather than
+  /// reading an id off a field: the id only exists once the request returns,
+  /// and a customer who dismisses in that window would otherwise report a
+  /// close with no id and lose the pairing.
+  Future<String?>? _viewReport;
+
+  /// Runs the host's dismissal, reporting `paywall.closed` alongside it. The
+  /// host's callback runs FIRST and unconditionally: the beacon is
+  /// best-effort, and an analytics failure must never be able to trap the
+  /// customer on the screen.
+  void _close() {
+    widget.onClose?.call();
+    final client = widget.client;
+    final report = _viewReport;
+    if (client == null || widget.disableViewTracking || report == null) return;
+    // Awaiting the view beacon is what keeps the pair intact when the customer
+    // dismisses before it lands. It has usually resolved long ago, in which
+    // case this continues on the next microtask.
+    unawaited(report.then((viewId) {
+      if (viewId == null) return null;
+      return client
+          .logPaywallClosed(
+            viewId,
+            placementKey: widget.placementKey,
+            paywallId: widget.paywallId,
+          )
+          .then((_) {}, onError: (_) {});
+    }, onError: (_) {}));
   }
 
   void _select(String packageId) {
@@ -296,6 +339,7 @@ class _RevnixPaywallState extends State<RevnixPaywall> {
         onRestore: widget.onRestore,
         onTerms: widget.onTerms,
         onPrivacy: widget.onPrivacy,
+        onClose: widget.onClose == null ? null : _close,
       ),
     );
   }
@@ -1460,30 +1504,77 @@ class _RevnixPaywallState extends State<RevnixPaywall> {
     return Material(
       color: t.background,
       child: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, viewport) {
-            final minHeight = viewport.hasBoundedHeight
-                ? (viewport.maxHeight - 28 - 32).clamp(0.0, double.infinity)
-                : 0.0;
-            return SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(24, 28, 24, 32),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: minHeight),
-                child: Center(
+        child: Stack(
+          children: [
+            LayoutBuilder(
+              builder: (context, viewport) {
+                final minHeight = viewport.hasBoundedHeight
+                    ? (viewport.maxHeight - 28 - 32).clamp(0.0, double.infinity)
+                    : 0.0;
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(24, 28, 24, 32),
                   child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 440),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: body,
+                    constraints: BoxConstraints(minHeight: minHeight),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 440),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: body,
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
-            );
-          },
+                );
+              },
+            ),
+            ..._classicClose(t),
+          ],
         ),
       ),
     );
+  }
+
+  /// The dismiss affordance the classic layouts get (REV-252).
+  ///
+  /// The nine `template` layouts have the same problem the designed ones had —
+  /// nothing on the screen closes them — and [RevnixPaywall.onClose] is a
+  /// parameter of the shared widget, so a host that wires it must get a close
+  /// on either path rather than silently nothing. Classic layouts author no
+  /// elements of their own, so there is never a design chip to suppress: the
+  /// rule reduces to "draw it whenever the host wired a handler".
+  ///
+  /// The designed path draws its own (inside the block renderer, where it can
+  /// see the tree), so this is never reached there.
+  List<Widget> _classicClose(_Palette t) {
+    if (widget.onClose == null) return const [];
+    return [
+      Positioned(
+        top: 14,
+        right: 14,
+        child: Semantics(
+          button: true,
+          label: 'Close',
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _close,
+            child: Container(
+              width: 30,
+              height: 30,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: t.textPrimary.withValues(alpha: 0.14),
+              ),
+              child: Text(
+                '\u00d7',
+                style: TextStyle(color: t.textPrimary, fontSize: 17, height: 1),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ];
   }
 }

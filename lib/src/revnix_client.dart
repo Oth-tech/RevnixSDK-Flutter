@@ -152,8 +152,31 @@ class RevnixClient {
 
   /// Fire-and-forget paywall impression. Call when the paywall becomes
   /// visible, not when you start loading it.
-  Future<void> logPaywallShown({String? placementKey, String? paywallId}) =>
-      _invoke<void>('logPaywallShown', {
+  ///
+  /// Resolves with the view id the beacon generated (REV-252), or null on a
+  /// host platform that predates close reporting. Hand that id to
+  /// [logPaywallClosed] when the customer dismisses THIS display: the two
+  /// events sharing one view id is what lets the ledger pair a close with the
+  /// display it ended, and the gap between their timestamps is the customer's
+  /// dwell on the screen. Ignoring the result is still valid — it stays a
+  /// fire-and-forget beacon. [RevnixPaywall] does all of this for you.
+  Future<String?> logPaywallShown({String? placementKey, String? paywallId}) =>
+      _invoke<String>('logPaywallShown', {
+        'placementKey': ?placementKey,
+        'paywallId': ?paywallId,
+      });
+
+  /// Fire-and-forget paywall dismissal (REV-252) — the other half of a
+  /// display's life. Idempotent per view id, exactly like the impression.
+  ///
+  /// Pass the id [logPaywallShown] resolved with for this display.
+  Future<void> logPaywallClosed(
+    String viewId, {
+    String? placementKey,
+    String? paywallId,
+  }) =>
+      _invoke<void>('logPaywallClosed', {
+        'viewId': viewId,
         'placementKey': ?placementKey,
         'paywallId': ?paywallId,
       });

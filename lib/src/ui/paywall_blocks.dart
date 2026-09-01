@@ -386,6 +386,21 @@ class BlockListItem {
 /// [UnknownBlock] is the whole point of this hierarchy having a catch-all: a
 /// block type introduced after this SDK shipped parses to it and is skipped
 /// when rendering, so the screen loses that one element rather than failing.
+/// What tapping a block does. Null means the block is decoration.
+///
+/// A FIELD on the existing block types rather than a new block type: an SDK
+/// older than this one drops the field and still renders the element exactly
+/// as it does today, so a design carrying a close chip degrades to inert. A
+/// new block type would have parsed to [UnknownBlock] and vanished from the
+/// screen instead — worse than the bug this fixes.
+enum BlockAction {
+  close;
+
+  /// An action this SDK does not know leaves the element inert.
+  static BlockAction? parse(String? value) =>
+      value == 'close' ? BlockAction.close : null;
+}
+
 @immutable
 abstract class PaywallBlock {
   const PaywallBlock({required this.id, this.style});
@@ -394,8 +409,16 @@ abstract class PaywallBlock {
 }
 
 class TextBlock extends PaywallBlock {
-  const TextBlock({required super.id, required this.text, super.style});
+  const TextBlock({
+    required super.id,
+    required this.text,
+    super.style,
+    this.action,
+  });
   final String text;
+
+  /// Tapping this block dismisses the paywall. See [BlockAction].
+  final BlockAction? action;
 }
 
 class ImageBlock extends PaywallBlock {
@@ -406,6 +429,7 @@ class ImageBlock extends PaywallBlock {
     this.fit,
     this.placeholder,
     super.style,
+    this.action,
   });
 
   /// Empty falls back to the config's hero image, then to a blank slot.
@@ -413,6 +437,9 @@ class ImageBlock extends PaywallBlock {
   final String? shape;
   final String? fit;
   final String? placeholder;
+
+  /// Tapping this block dismisses the paywall. See [BlockAction].
+  final BlockAction? action;
 }
 
 class ListBlock extends PaywallBlock {
@@ -451,8 +478,17 @@ class ProductsBlock extends PaywallBlock {
 }
 
 class ButtonBlock extends PaywallBlock {
-  const ButtonBlock({required super.id, required this.label, super.style});
+  const ButtonBlock({
+    required super.id,
+    required this.label,
+    super.style,
+    this.action,
+  });
   final String label;
+
+  /// [BlockAction.close] turns this button into a dismiss ("Not now") instead
+  /// of the purchase CTA, which is what a button means by default.
+  final BlockAction? action;
 }
 
 class LinksBlock extends PaywallBlock {
@@ -597,9 +633,15 @@ class PaywallBlockDoc {
     int? i(String key) => value[key] is num ? (value[key] as num).toInt() : null;
     final id = s('id') ?? '';
     final style = BlockStyle.from(value['style']);
+    final action = BlockAction.parse(s('action'));
     switch (value['type']) {
       case 'text':
-        return TextBlock(id: id, text: s('text') ?? '', style: style);
+        return TextBlock(
+          id: id,
+          text: s('text') ?? '',
+          style: style,
+          action: action,
+        );
       case 'image':
         return ImageBlock(
           id: id,
@@ -607,6 +649,7 @@ class PaywallBlockDoc {
           shape: s('shape'),
           fit: s('fit'),
           placeholder: s('placeholder'),
+          action: action,
           style: style,
         );
       case 'list':
@@ -639,7 +682,12 @@ class PaywallBlockDoc {
           style: style,
         );
       case 'button':
-        return ButtonBlock(id: id, label: s('label') ?? '', style: style);
+        return ButtonBlock(
+          id: id,
+          label: s('label') ?? '',
+          style: style,
+          action: action,
+        );
       case 'links':
         return LinksBlock(
           id: id,
@@ -929,6 +977,7 @@ class BlockRenderContext {
     this.onRestore,
     this.onTerms,
     this.onPrivacy,
+    this.onClose,
   });
 
   final PaywallBlockDoc doc;
@@ -952,6 +1001,10 @@ class BlockRenderContext {
   final VoidCallback? onRestore;
   final VoidCallback? onTerms;
   final VoidCallback? onPrivacy;
+
+  /// Dismissal (REV-252). Null means the host wired none, and no close is
+  /// drawn at all — a dead close button is worse than none.
+  final VoidCallback? onClose;
 }
 
 /// Renders a whole block document.
@@ -1008,6 +1061,10 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
                     ),
                   ),
                 ),
+                // Outside the Transform.scale, so the fallback close keeps its
+                // tap size and its distance from the screen edge whatever the
+                // device width does to the design (REV-252).
+                ..._fallbackClose(),
               ],
             ),
           );
@@ -1019,16 +1076,63 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
       padding: const EdgeInsets.all(20),
       child: body,
     );
-    if (art.isEmpty) return Container(color: background, child: scroller);
+    final close = _fallbackClose();
+    if (art.isEmpty && close.isEmpty) {
+      return Container(color: background, child: scroller);
+    }
     // The art layers fill the screen and the content scrolls over them, which
     // is what the dashboard's absolutely-positioned art boxes do too.
     return Container(
       color: background,
       child: Stack(
         fit: StackFit.expand,
-        children: [...art, scroller],
+        children: [...art, scroller, ...close],
       ),
     );
+  }
+
+  /// The dismiss affordance the renderer supplies itself (REV-252), or an
+  /// empty list when it should not draw one.
+  ///
+  /// Drawn only when the design authors no close of its own AND the host wired
+  /// an `onClose` — which is what makes every paywall published before close
+  /// existed dismissible without being re-authored, while a design that DOES
+  /// carry a close chip never ends up showing two.
+  ///
+  /// Deliberately plain: it is a safety net, not a design element. Tinted from
+  /// the screen's own ink rather than a fixed white, so it stays legible on a
+  /// light design as well as a dark one.
+  List<Widget> _fallbackClose() {
+    final onClose = ctx.onClose;
+    if (onClose == null || revnixHasCloseAction(ctx.doc.blocks)) return const [];
+    final ink = revnixBlockColor(ctx.doc.textColor, ctx.doc) ?? const Color(0xFFFFFFFF);
+    return [
+      Positioned(
+        top: 14,
+        right: 14,
+        child: Semantics(
+          button: true,
+          label: 'Close',
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onClose,
+            child: Container(
+              width: 30,
+              height: 30,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: ink.withValues(alpha: 0.14),
+              ),
+              child: Text(
+                '\u00d7',
+                style: TextStyle(color: ink, fontSize: 17, height: 1),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ];
   }
 
   /// The ground as a flat colour, for the box behind everything. A gradient
@@ -1142,18 +1246,21 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
   Widget? _render(PaywallBlock block, RevnixPaywallPackage? pkg) {
     final doc = ctx.doc;
     if (block is TextBlock) {
-      return _styled(
-        block.style,
-        Text(
-          revnixResolveTags(block.text, pkg, ctx.packages),
-          textAlign: _textAlign(block.style?.align),
-          maxLines: block.style?.nowrap == true ? 1 : null,
-          overflow: block.style?.nowrap == true ? TextOverflow.clip : null,
-          style: _textStyle(block.style),
+      return _closeOnTap(
+        block.action,
+        _styled(
+          block.style,
+          Text(
+            revnixResolveTags(block.text, pkg, ctx.packages),
+            textAlign: _textAlign(block.style?.align),
+            maxLines: block.style?.nowrap == true ? 1 : null,
+            overflow: block.style?.nowrap == true ? TextOverflow.clip : null,
+            style: _textStyle(block.style),
+          ),
         ),
       );
     }
-    if (block is ImageBlock) return _image(block);
+    if (block is ImageBlock) return _closeOnTap(block.action, _image(block));
     if (block is ListBlock) return _list(block);
     if (block is ProductsBlock) return _products(block);
     if (block is ButtonBlock) return _button(block, pkg);
@@ -1320,16 +1427,49 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
     );
   }
 
+  /// Makes an element the paywall's dismiss target when the design marks it as
+  /// one (REV-252). A block with no close action is returned untouched, so it
+  /// never intercepts a tap meant for what sits behind it.
+  Widget _closeOnTap(BlockAction? action, Widget child) {
+    final onClose = ctx.onClose;
+    if (action != BlockAction.close || onClose == null) return child;
+    return Semantics(
+      button: true,
+      label: 'Close',
+      child: GestureDetector(
+        // The whole box is the target, not just the glyph: a close chip is
+        // mostly padding, and a bare × is well under the 48dp tap minimum.
+        behavior: HitTestBehavior.opaque,
+        onTap: onClose,
+        child: child,
+      ),
+    );
+  }
+
   Widget _button(ButtonBlock block, RevnixPaywallPackage? pkg) {
     final doc = ctx.doc;
     final style = block.style;
-    final accent = revnixBlockColor(style?.fill, doc) ?? revnixBlockColor(doc.accent, doc) ?? const Color(0xFF6478FF);
-    final ink = revnixBlockColor(style?.textColor, doc) ?? revnixBlockColor(doc.accentInk, doc) ?? const Color(0xFFFFFFFF);
+    // A button the design marks as the close dismisses instead of buying, and
+    // takes no accent fill: the CTA must stay the one accented thing on the
+    // screen, or a "Not now" competes with "Subscribe" for the eye.
+    final closes = block.action == BlockAction.close && ctx.onClose != null;
+    final accent = revnixBlockColor(style?.fill, doc) ??
+        (closes
+            ? const Color(0x00000000)
+            : revnixBlockColor(doc.accent, doc) ?? const Color(0xFF6478FF));
+    final ink = revnixBlockColor(style?.textColor, doc) ??
+        (closes
+            ? revnixBlockColor(doc.textColor, doc) ?? const Color(0xFFFFFFFF)
+            : revnixBlockColor(doc.accentInk, doc) ?? const Color(0xFFFFFFFF));
     final sized = style?.height?.px != null;
     return _styled(
       style,
       GestureDetector(
         onTap: () {
+          if (closes) {
+            ctx.onClose?.call();
+            return;
+          }
           final id = ctx.selectedPackageId ??
               (ctx.packages.isEmpty ? null : ctx.packages.first.packageId);
           if (id != null) ctx.onPurchase(id);
@@ -1782,3 +1922,27 @@ class _GradientBox extends StatelessWidget {
     );
   }
 }
+
+/// Does this tree author a dismiss affordance that is CERTAIN to render?
+///
+/// The renderer draws its own close button only when this is false, so a design
+/// published before close existed becomes dismissible without being
+/// re-authored, and a design that DOES author a close chip never shows two. The
+/// same predicate exists in every Revnix SDK — keep them identical.
+bool revnixHasCloseAction(List<PaywallBlock> blocks) => blocks.any((block) {
+      if (block is TextBlock) return block.action == BlockAction.close;
+      if (block is ImageBlock) return block.action == BlockAction.close;
+      if (block is ButtonBlock) return block.action == BlockAction.close;
+      // Conditional containers are deliberately not searched: a `repeat` card
+      // renders once per package (none, when the offering is empty) and a
+      // `packageIndex` card is hidden when the offering does not reach that
+      // index, so a close authored inside one MIGHT not appear. Counting it
+      // would suppress the fallback and leave the customer with no way out —
+      // the exact bug this feature exists to fix.
+      if (block is CardBlock) {
+        return block.repeat == null &&
+            block.packageIndex == null &&
+            revnixHasCloseAction(block.children);
+      }
+      return false;
+    });

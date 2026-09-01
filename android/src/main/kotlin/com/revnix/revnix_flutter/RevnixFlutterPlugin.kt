@@ -153,7 +153,17 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                         result.success(null)
                     }
                     "logPaywallShown" -> {
-                        active.logPaywallShown(
+                        // REV-252: returns the view id so Dart can pair the
+                        // close with the display it ended. Older Dart ignores it.
+                        val viewId = active.logPaywallDisplay(
+                            placementKey = call.argument<String>("placementKey"),
+                            paywallId = call.argument<String>("paywallId"),
+                        )
+                        result.success(viewId)
+                    }
+                    "logPaywallClosed" -> {
+                        active.logPaywallClosed(
+                            viewId = call.argument<String>("viewId").orEmpty(),
                             placementKey = call.argument<String>("placementKey"),
                             paywallId = call.argument<String>("paywallId"),
                         )
