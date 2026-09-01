@@ -8,4 +8,5 @@ library;
 export 'src/errors.dart';
 export 'src/models.dart';
 export 'src/revnix_client.dart';
+export 'src/ui/paywall_blocks.dart';
 export 'src/ui/revnix_paywall.dart';

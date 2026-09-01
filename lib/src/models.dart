@@ -326,6 +326,7 @@ class PaywallConfig {
     this.review,
     this.offer,
     this.footer,
+    this.blocks,
   });
 
   /// Layout — the screen structure to render. Known values: "focus",
@@ -359,6 +360,16 @@ class PaywallConfig {
   /// Null (legacy config) = show all three footer links.
   final PaywallFooter? footer;
 
+  /// A designed paywall: the block tree the dashboard's builder authored.
+  /// When present [RevnixPaywall] renders THIS and the fields above act as the
+  /// fallback for apps on an SDK that predates block rendering — so an older
+  /// app keeps showing a sane classic screen instead of nothing.
+  ///
+  /// Held as the raw decoded map rather than a typed tree so a document from a
+  /// NEWER dashboard can never fail to parse here; `PaywallBlockDoc.parse`
+  /// turns it into the parts this SDK understands.
+  final Object? blocks;
+
   static PaywallConfig fromMap(Map<Object?, Object?> map) {
     final review = map['review'] as Map<Object?, Object?>?;
     final offer = map['offer'] as Map<Object?, Object?>?;
@@ -380,6 +391,7 @@ class PaywallConfig {
       review: review == null ? null : PaywallReview.fromMap(review),
       offer: offer == null ? null : PaywallOffer.fromMap(offer),
       footer: footer == null ? null : PaywallFooter.fromMap(footer),
+      blocks: map['blocks'],
     );
   }
 }
