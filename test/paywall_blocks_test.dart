@@ -45,6 +45,7 @@ void main() {
     void Function(String)? onPurchase,
     VoidCallback? onRestore,
     void Function(String)? onSelect,
+    VoidCallback? onClose,
     String? selectedPackageId = 'annual',
   }) =>
       MaterialApp(
@@ -57,6 +58,7 @@ void main() {
               onPurchase: onPurchase ?? (_) {},
               onSelect: onSelect ?? (_) {},
               onRestore: onRestore,
+              onClose: onClose,
             ),
           ),
         ),
@@ -792,6 +794,123 @@ void main() {
       );
       await tester.pumpWidget(host(doc!));
       expect(find.text('deep'), findsOneWidget);
+    });
+  });
+
+  // REV-252: the close affordance. A design MAY mark an element
+  // `action: "close"`; the renderer supplies a close of its own ONLY when the
+  // design marks none. That rule is what makes every paywall published before
+  // close existed dismissible without being re-authored, while a design that
+  // authors its own × never shows two.
+  group('close affordance', () {
+    const text = {'id': 'b1', 'type': 'text', 'text': 'Go Pro'};
+    // The chip the renderer supplies itself, identified by its glyph. The
+    // authored closes below all use a plain 'X', so this counts only the
+    // renderer's own and the suppression assertions stay unambiguous.
+    final fallback = find.text('\u00d7');
+
+    testWidgets('a design authoring no close gets one from the renderer', (tester) async {
+      final doc = PaywallBlockDoc.parse(docWith([text]));
+      await tester.pumpWidget(host(doc!, onClose: () {}));
+      expect(fallback, findsOneWidget);
+    });
+
+    testWidgets('no onClose means no close is drawn at all', (tester) async {
+      // A dead close button is worse than none: the host performs dismissal,
+      // so with no handler there is nothing the chip could do.
+      final doc = PaywallBlockDoc.parse(docWith([text]));
+      await tester.pumpWidget(host(doc!));
+      expect(fallback, findsNothing);
+    });
+
+    testWidgets('a design authoring its own close gets no second one', (tester) async {
+      final doc = PaywallBlockDoc.parse(docWith([
+        text,
+        {'id': 'x', 'type': 'text', 'text': 'X', 'action': 'close'},
+      ]));
+      await tester.pumpWidget(host(doc!, onClose: () {}));
+      expect(fallback, findsNothing);
+      expect(find.text('X'), findsOneWidget);
+    });
+
+    testWidgets('an authored close nested in a card still suppresses the fallback', (tester) async {
+      final doc = PaywallBlockDoc.parse(docWith([
+        {
+          'id': 'c',
+          'type': 'card',
+          'children': [
+            {'id': 'x', 'type': 'text', 'text': 'X', 'action': 'close'},
+          ],
+        },
+      ]));
+      await tester.pumpWidget(host(doc!, onClose: () {}));
+      expect(fallback, findsNothing);
+    });
+
+    testWidgets('the renderer-supplied chip dismisses when tapped', (tester) async {
+      var closed = 0;
+      final doc = PaywallBlockDoc.parse(docWith([text]));
+      await tester.pumpWidget(host(doc!, onClose: () => closed += 1));
+      await tester.tap(fallback);
+      expect(closed, 1);
+    });
+
+    testWidgets('an authored close element dismisses when tapped', (tester) async {
+      var closed = 0;
+      final doc = PaywallBlockDoc.parse(docWith([
+        {'id': 'x', 'type': 'text', 'text': 'X', 'action': 'close'},
+      ]));
+      await tester.pumpWidget(host(doc!, onClose: () => closed += 1));
+      await tester.tap(find.text('X'));
+      expect(closed, 1);
+    });
+
+    testWidgets('a button marked close dismisses instead of purchasing', (tester) async {
+      var closed = 0;
+      final purchased = <String>[];
+      final doc = PaywallBlockDoc.parse(docWith([
+        {'id': 'b', 'type': 'button', 'label': 'Not now', 'action': 'close'},
+      ]));
+      await tester.pumpWidget(host(
+        doc!,
+        onClose: () => closed += 1,
+        onPurchase: purchased.add,
+      ));
+      await tester.tap(find.text('Not now'));
+      expect(closed, 1);
+      expect(purchased, isEmpty, reason: 'a dismiss must never charge');
+    });
+
+    testWidgets('a close in a conditional card does not suppress the fallback', (tester) async {
+      // A `repeat` card renders once per package (none, on an empty offering)
+      // and a `packageIndex` card is hidden when the offering does not reach
+      // that index — so a close inside one MIGHT not render. Suppressing on it
+      // would leave the customer with no way out, the exact bug this fixes.
+      const close = {'id': 'x', 'type': 'text', 'text': 'X', 'action': 'close'};
+      for (final card in [
+        {'id': 'c', 'type': 'card', 'repeat': 'packages', 'children': [close]},
+        {'id': 'c', 'type': 'card', 'packageIndex': 5, 'children': [close]},
+      ]) {
+        final doc = PaywallBlockDoc.parse(docWith([card]));
+        await tester.pumpWidget(host(doc!, onClose: () {}));
+        expect(fallback, findsOneWidget);
+      }
+      // A plain card is unconditional, so its close DOES suppress.
+      final plain = PaywallBlockDoc.parse(docWith([
+        {'id': 'c', 'type': 'card', 'children': [close]},
+      ]));
+      await tester.pumpWidget(host(plain!, onClose: () {}));
+      expect(fallback, findsNothing);
+    });
+
+    testWidgets('an unknown action value leaves the element decorative', (tester) async {
+      // Forward compatibility both ways: an action this SDK does not know must
+      // not be mistaken for a close, nor suppress the fallback.
+      final doc = PaywallBlockDoc.parse(docWith([
+        {'id': 't', 'type': 'text', 'text': 'Go Pro', 'action': 'purchase'},
+      ]));
+      await tester.pumpWidget(host(doc!, onClose: () {}));
+      expect(fallback, findsOneWidget);
     });
   });
 }

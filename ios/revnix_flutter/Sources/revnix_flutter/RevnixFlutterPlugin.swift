@@ -97,7 +97,15 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
                         appVersion: args["appVersion"] as? String)
                     result(nil)
                 case "logPaywallShown":
-                    await client.logPaywallShown(
+                    // REV-252: returns the view id so Dart can pair the close
+                    // with the display it ended. Older Dart ignores it.
+                    let viewId = await client.logPaywallDisplay(
+                        placementKey: args["placementKey"] as? String,
+                        paywallId: args["paywallId"] as? String)
+                    result(viewId)
+                case "logPaywallClosed":
+                    await client.logPaywallClosed(
+                        viewId: args["viewId"] as? String ?? "",
                         placementKey: args["placementKey"] as? String,
                         paywallId: args["paywallId"] as? String)
                     result(nil)
