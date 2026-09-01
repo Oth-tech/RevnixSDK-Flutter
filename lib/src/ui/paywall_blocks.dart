@@ -23,8 +23,11 @@
 //     `{price}`) rather than resolving to something wrong — a customer must
 //     never be shown a price the store will not charge.
 
+import 'dart:ui' show ImageFilter;
+
 import 'package:flutter/material.dart';
 
+import 'paywall_background.dart';
 import 'revnix_paywall.dart' show RevnixPaywallPackage;
 
 /// The device screen `canvas` designs are authored against.
@@ -532,6 +535,7 @@ class PaywallBlockDoc {
     required this.version,
     this.layout,
     required this.background,
+    this.backgroundSpec,
     required this.textColor,
     required this.accent,
     required this.accentInk,
@@ -544,7 +548,14 @@ class PaywallBlockDoc {
   /// "canvas" designs are authored against a fixed device screen and scale as
   /// a whole; "flow" designs lay out in a scrolling column.
   final String? layout;
+
+  /// The ground paint — a colour or a CSS gradient string. Kept flat because
+  /// it is what `@bg` resolves against and what every unedited paywall has.
   final String background;
+
+  /// The background exactly as published, so the photo and scrim layers can
+  /// be resolved. Null for a document whose background is a plain string.
+  final Object? backgroundSpec;
   final String textColor;
   final String accent;
   final String accentInk;
@@ -559,15 +570,16 @@ class PaywallBlockDoc {
     final raw = value['blocks'];
     if (raw is! List || raw.isEmpty) return null;
     // `background` is a plain string in the original form and an object in the
-    // layered one; both reduce to the ground colour this SDK paints.
+    // layered one. The object's ground field is `color` — `ground` is the
+    // name of the RESOLVED layer, and reading that off the wire is what used
+    // to paint every edited paywall black; it stays accepted for safety.
     final background = value['background'];
     String? str(Object? v) => v is String ? v : null;
     return PaywallBlockDoc(
       version: value['version'] is num ? (value['version'] as num).toInt() : 1,
       layout: str(value['layout']),
-      background: background is String
-          ? background
-          : (background is Map ? str(background['ground']) : null) ?? '#000000',
+      backgroundSpec: background,
+      background: revnixBackgroundGround(background) ?? '#000000',
       textColor: str(value['textColor']) ?? '#FFFFFF',
       accent: str(value['accent']) ?? '#6478ff',
       accentInk: str(value['accentInk']) ?? '#FFFFFF',
@@ -846,6 +858,10 @@ Color? revnixBlockColor(String? value, PaywallBlockDoc doc) {
       case 'accentInk':
         raw = doc.accentInk;
       case 'bg':
+        // The raw ground, gradient and all — exactly what the dashboard
+        // answers `@bg` with. A gradient is not a colour, so the parse below
+        // returns null and the caller keeps its own default, which is what the
+        // builder shows for a `@bg` tint over a gradient.
         raw = doc.background;
       case 'text':
         raw = doc.textColor;
@@ -946,7 +962,12 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final doc = ctx.doc;
-    final background = revnixBlockColor(doc.background, doc) ?? const Color(0xFF000000);
+    final layers = revnixBackgroundLayers(
+      doc.backgroundSpec ?? doc.background,
+      resolve: (v) => v,
+    );
+    final background = _groundColor(layers.ground, doc);
+    final art = _backgroundArt(layers, doc);
     final body = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
@@ -966,30 +987,131 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
             width: width,
             height: kRevnixCanvasHeight * scale,
             clipBehavior: Clip.hardEdge,
-            child: Align(
-              alignment: Alignment.topLeft,
-              child: Transform.scale(
-                scale: scale,
-                alignment: Alignment.topLeft,
-                child: SizedBox(
-                  width: kRevnixCanvasWidth,
-                  height: kRevnixCanvasHeight,
-                  child: body,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                ...art,
+                Align(
+                  alignment: Alignment.topLeft,
+                  child: Transform.scale(
+                    scale: scale,
+                    alignment: Alignment.topLeft,
+                    child: SizedBox(
+                      width: kRevnixCanvasWidth,
+                      height: kRevnixCanvasHeight,
+                      child: body,
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ),
           );
         },
       );
     }
 
+    final scroller = SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: body,
+    );
+    if (art.isEmpty) return Container(color: background, child: scroller);
+    // The art layers fill the screen and the content scrolls over them, which
+    // is what the dashboard's absolutely-positioned art boxes do too.
     return Container(
       color: background,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: body,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [...art, scroller],
       ),
     );
+  }
+
+  /// The ground as a flat colour, for the box behind everything. A gradient
+  /// ground is drawn by [_backgroundArt] instead; the flat colour under it is
+  /// its base stop, so a gradient that fails to parse still shows a colour
+  /// from the design rather than black.
+  Color _groundColor(String? ground, PaywallBlockDoc doc) =>
+      revnixBlockColor(revnixBackgroundBaseColor(ground), doc) ??
+      const Color(0xFF000000);
+
+  /// The gradient, photo and scrim layers, bottom first. Empty for an
+  /// unedited paywall whose background is a flat colour, so that case renders
+  /// exactly as it did before.
+  List<Widget> _backgroundArt(RevnixBackgroundLayers layers, PaywallBlockDoc doc) {
+    final out = <Widget>[];
+
+    final ground = layers.ground;
+    if (ground != null) {
+      for (final gradient in revnixParseCssGradients(
+        ground,
+        (v) => revnixBlockColor(v, doc),
+      )) {
+        out.add(Positioned.fill(child: _GradientBox(gradient: gradient)));
+      }
+    }
+
+    final image = layers.image;
+    if (image != null) {
+      Widget photo = Image.network(
+        image.url,
+        fit: image.fit == RevnixBackgroundFit.contain
+            ? BoxFit.contain
+            : BoxFit.cover,
+        alignment: image.alignment,
+        // A photo that will not load must not black out the screen: the
+        // ground and scrim below and above it still make a usable paywall.
+        errorBuilder: (_, _, _) => const SizedBox.shrink(),
+      );
+      if (image.blur != null) {
+        // A blurred layer bleeds its own transparent edge inward, which reads
+        // as a bright rim over the ground. Scaling past the edges hides it —
+        // the same compensation every sibling renderer applies — and the clip
+        // keeps the oversized layer inside the screen.
+        photo = ClipRect(
+          child: Transform.scale(
+            scale: 1.1,
+            child: ImageFiltered(
+              imageFilter: ImageFilter.blur(sigmaX: image.blur!, sigmaY: image.blur!),
+              child: photo,
+            ),
+          ),
+        );
+      }
+      out.add(Positioned.fill(
+        child: Opacity(opacity: image.opacity, child: photo),
+      ));
+    }
+
+    final overlay = layers.overlay;
+    if (overlay != null) {
+      final gradients = revnixParseCssGradients(
+        overlay.fill,
+        (v) => revnixBlockColor(v, doc),
+      );
+      final children = <Widget>[];
+      if (gradients.isEmpty) {
+        final solid = revnixBlockColor(overlay.fill, doc);
+        if (solid != null) {
+          children.add(DecoratedBox(decoration: BoxDecoration(color: solid)));
+        }
+      } else {
+        for (final gradient in gradients) {
+          children.add(_GradientBox(gradient: gradient));
+        }
+      }
+      if (children.isNotEmpty) {
+        out.add(Positioned.fill(
+          child: Opacity(
+            opacity: overlay.opacity,
+            child: children.length == 1
+                ? children.first
+                : Stack(fit: StackFit.expand, children: children),
+          ),
+        ));
+      }
+    }
+
+    return out;
   }
 
   List<Widget> _renderList(List<PaywallBlock> blocks, RevnixPaywallPackage? pkg) =>
@@ -1579,6 +1701,48 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
       right: right ?? BorderSide.none,
       bottom: bottom ?? BorderSide.none,
       left: left ?? BorderSide.none,
+    );
+  }
+}
+
+/// Paints one parsed CSS gradient.
+///
+/// Exists for the radial case. Flutter measures [RadialGradient.radius] as a
+/// fraction of the box's SHORTEST side, while the descriptor — and the iOS and
+/// Android renderers — express it against the LONGEST, so a glow drawn on a
+/// tall phone would come out roughly half the size it does everywhere else.
+/// The box's own aspect is the only place that conversion can be done, so it
+/// happens here rather than in the parser.
+class _GradientBox extends StatelessWidget {
+  const _GradientBox({required this.gradient});
+
+  final Gradient gradient;
+
+  @override
+  Widget build(BuildContext context) {
+    final radial = gradient;
+    if (radial is! RadialGradient) {
+      return DecoratedBox(decoration: BoxDecoration(gradient: gradient));
+    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        final h = constraints.maxHeight;
+        final shortest = w < h ? w : h;
+        final longest = w > h ? w : h;
+        final scale = shortest > 0 ? longest / shortest : 1.0;
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: RadialGradient(
+              center: radial.center,
+              radius: radial.radius * scale,
+              colors: radial.colors,
+              stops: radial.stops,
+              tileMode: radial.tileMode,
+            ),
+          ),
+        );
+      },
     );
   }
 }

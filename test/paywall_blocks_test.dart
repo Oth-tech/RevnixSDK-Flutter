@@ -132,10 +132,14 @@ void main() {
     });
 
     test('a layered background reduces to its ground colour', () {
+      // The dashboard's ground field is `color`. This test used to assert
+      // `ground` — the name of the RESOLVED layer, which no writer has ever
+      // emitted — and that is precisely why the black-screen bug shipped: the
+      // wrong contract was green.
       final doc = PaywallBlockDoc.parse({
         'version': 1,
         'background': {
-          'ground': '#0B0D10',
+          'color': '#0B0D10',
           'image': {'url': 'https://x/y.jpg'},
         },
         'textColor': '#fff',
@@ -146,6 +150,34 @@ void main() {
         ],
       });
       expect(doc!.background, '#0B0D10');
+    });
+
+    test('a legacy ground key is still honoured so no published document breaks', () {
+      final doc = PaywallBlockDoc.parse({
+        'version': 1,
+        'background': {'ground': '#0B0D10'},
+        'textColor': '#fff',
+        'accent': '#6478ff',
+        'accentInk': '#000',
+        'blocks': [
+          {'id': 't', 'type': 'text', 'text': 'x'},
+        ],
+      });
+      expect(doc!.background, '#0B0D10');
+    });
+
+    test('color wins over ground when a document somehow carries both', () {
+      final doc = PaywallBlockDoc.parse({
+        'version': 1,
+        'background': {'color': '#111820', 'ground': '#FF0000'},
+        'textColor': '#fff',
+        'accent': '#6478ff',
+        'accentInk': '#000',
+        'blocks': [
+          {'id': 't', 'type': 'text', 'text': 'x'},
+        ],
+      });
+      expect(doc!.background, '#111820');
     });
 
     test('a malformed tree never costs the whole config', () {
