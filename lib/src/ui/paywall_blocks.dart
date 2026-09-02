@@ -906,11 +906,13 @@ Color? revnixBlockColor(String? value, PaywallBlockDoc doc) {
       case 'accentInk':
         raw = doc.accentInk;
       case 'bg':
-        // The raw ground, gradient and all — exactly what the dashboard
-        // answers `@bg` with. A gradient is not a colour, so the parse below
-        // returns null and the caller keeps its own default, which is what the
-        // builder shows for a `@bg` tint over a gradient.
-        raw = doc.background;
+        // The ground's FLAT base colour, which is what the dashboard answers
+        // `@bg` with: it feeds the token into `color-mix()`, which cannot take
+        // a gradient, so it collapses a gradient ground to one colour first.
+        // Handing the raw gradient here instead made every `@bg` stop inside a
+        // gradient drop out — and a gradient left with one stop does not parse
+        // at all, so the whole fill was lost.
+        raw = revnixBackgroundBaseColor(doc.background);
       case 'text':
         raw = doc.textColor;
       default:
@@ -923,9 +925,109 @@ Color? revnixBlockColor(String? value, PaywallBlockDoc doc) {
   return base.withValues(alpha: (base.a * alpha).clamp(0.0, 1.0));
 }
 
-/// Parses "#rgb", "#rrggbb", "#rrggbbaa", "rgb()" and "rgba()".
+/// A resolved paint: EITHER a flat colour, OR gradient layers, BOTTOM FIRST.
+///
+/// The dashboard hands `fill` straight to CSS `background`, which takes a
+/// colour *or* a gradient *or* a stack of them. Flutter has no single type for
+/// that union, so it is carried as two fields and painted by
+/// [revnixFillLayers].
+///
+/// The two are never both set. The flat colour a gradient collapses to belongs
+/// only to the case where the gradient cannot be drawn: painting it underneath
+/// one that CAN be drawn makes the box opaque, and 83 of the library's 139
+/// gradient fills are scrims that fade through a translucent stop — they are
+/// drawn over the screen's photo precisely so it shows through.
+class RevnixFill {
+  const RevnixFill({this.color, this.gradients = const []})
+      : assert(color == null || gradients.length == 0,
+            'a painted gradient takes no flat backing');
+
+  final Color? color;
+  final List<Gradient> gradients;
+
+  bool get isNone => color == null && gradients.isEmpty;
+}
+
+/// Resolves a paint string the way the dashboard's CSS `background` does.
+///
+/// A plain colour is tried first (the common case, and the cheap one), then
+/// the gradient forms, and only then the fallback. Nothing fails silently: a
+/// `fill` the design set but this build cannot read collapses to the first
+/// colour literal in the string — a colour FROM THE DESIGN, never black — and
+/// reports through [onDiagnostic].
+RevnixFill revnixBlockFill(
+  String? value,
+  PaywallBlockDoc doc, {
+  void Function(String)? onDiagnostic,
+}) {
+  final raw = value?.trim() ?? '';
+  if (raw.isEmpty) return const RevnixFill();
+
+  final flat = revnixBlockColor(raw, doc);
+  if (flat != null) return RevnixFill(color: flat);
+
+  final gradients = revnixParseCssGradients(raw, (v) => revnixBlockColor(v, doc));
+  if (gradients.isNotEmpty) return RevnixFill(gradients: gradients);
+
+  onDiagnostic?.call('unreadable fill $raw');
+  // A pattern paints nothing rather than a stripe colour spread over the box.
+  if (revnixIsRepeatingPattern(raw)) return const RevnixFill();
+  return RevnixFill(color: revnixBlockColor(revnixBackgroundBaseColor(raw), doc));
+}
+
+/// The flat colour a parsed gradient stack stands in for: the first stop of the
+/// BOTTOM layer that is not fully transparent. It is what shows through a
+/// translucent stop, and what stays on screen if a layer fails to paint.
+Color? revnixGradientBaseColor(List<Gradient> gradients) {
+  if (gradients.isEmpty) return null;
+  final colors = gradients.first.colors;
+  if (colors.isEmpty) return null;
+  for (final c in colors) {
+    if (c.a > 0) return c;
+  }
+  return colors.first;
+  // NB: the alpha is read off the RESOLVED colour, so a token stop written
+  // `@accent/0` counts as transparent exactly as `#6478ff00` does.
+}
+
+/// A field that can only ever be ONE colour — a border, text, an icon.
+///
+/// A gradient there has no native form (nor a CSS one: `border-color` takes no
+/// gradient, so the dashboard drops the declaration outright). Collapsing it to
+/// the colour it stands for keeps the stroke or the glyph visible, which is
+/// nearer the design's intent than losing it.
+Color? revnixBlockStrokeColor(
+  String? value,
+  PaywallBlockDoc doc, {
+  void Function(String)? onDiagnostic,
+}) {
+  final raw = value?.trim() ?? '';
+  if (raw.isEmpty) return null;
+  final flat = revnixBlockColor(raw, doc);
+  if (flat != null) return flat;
+  final base = revnixGradientBaseColor(
+    revnixParseCssGradients(raw, (v) => revnixBlockColor(v, doc)),
+  );
+  if (base != null) {
+    onDiagnostic?.call('gradient flattened in a colour-only field: $raw');
+    return base;
+  }
+  onDiagnostic?.call('unreadable colour $raw');
+  return revnixBlockColor(revnixBackgroundBaseColor(raw), doc);
+}
+
+/// A fill's gradient layers as widgets that fill their Stack, bottom first.
+List<Widget> revnixFillLayers(RevnixFill fill) => [
+      for (final gradient in fill.gradients)
+        Positioned.fill(child: _GradientBox(gradient: gradient)),
+    ];
+
+/// Parses "#rgb", "#rrggbb", "#rrggbbaa", "rgb()", "rgba()" and `transparent`.
 Color? revnixParseColor(String value) {
   final s = value.trim();
+  // `transparent` appears in the shipped designs' gradient stops. Rejecting it
+  // dropped the stop, and a gradient left with one stop does not parse at all.
+  if (s.toLowerCase() == 'transparent') return const Color(0x00000000);
   if (s.startsWith('#')) {
     var hex = s.substring(1);
     if (hex.length == 3 || hex.length == 4) {
@@ -960,6 +1062,44 @@ Color? revnixParseColor(String value) {
   );
 }
 
+/// Paints a resolved fill behind [child], clipped to [radius].
+///
+/// The flat-colour case stays a plain [DecoratedBox] — the shape every paywall
+/// had before gradients rendered — and only a gradient takes the layered path.
+class RevnixFillBox extends StatelessWidget {
+  const RevnixFillBox({super.key, required this.fill, this.radius, this.child});
+
+  final RevnixFill fill;
+  final BorderRadius? radius;
+  final Widget? child;
+
+  @override
+  Widget build(BuildContext context) {
+    // A null child takes the shape Container gives one: a LimitedBox that
+    // collapses under UNBOUNDED constraints and expands under bounded ones.
+    // A bare SizedBox.expand() throws instead — which a `line` block inside a
+    // `row` card would have done on the plain-colour path.
+    final content = child ??
+        const LimitedBox(maxWidth: 0, maxHeight: 0, child: SizedBox.expand());
+    if (fill.gradients.isEmpty) {
+      return DecoratedBox(
+        decoration: BoxDecoration(color: fill.color, borderRadius: radius),
+        child: content,
+      );
+    }
+    return ClipRRect(
+      borderRadius: radius ?? BorderRadius.zero,
+      child: Stack(
+        fit: StackFit.passthrough,
+        children: [
+          ...revnixFillLayers(fill),
+          content,
+        ],
+      ),
+    );
+  }
+}
+
 // ——— rendering ———
 
 /// Everything the tree needs that is not in the document itself.
@@ -978,6 +1118,7 @@ class BlockRenderContext {
     this.onTerms,
     this.onPrivacy,
     this.onClose,
+    this.onDiagnostic,
   });
 
   final PaywallBlockDoc doc;
@@ -1005,6 +1146,12 @@ class BlockRenderContext {
   /// Dismissal (REV-252). Null means the host wired none, and no close is
   /// drawn at all — a dead close button is worse than none.
   final VoidCallback? onClose;
+
+  /// Where the renderer reports a paint string it could not read. Local only —
+  /// it never leaves the device. The screen still draws (a fill falls back to a
+  /// colour from the design), so this is the only way a host learns that a
+  /// paywall is rendering approximately.
+  final void Function(String message)? onDiagnostic;
 }
 
 /// Renders a whole block document.
@@ -1266,13 +1413,18 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
     if (block is ButtonBlock) return _button(block, pkg);
     if (block is LinksBlock) return _links(block);
     if (block is LineBlock) {
+      var fill = revnixBlockFill(block.style?.fill, doc, onDiagnostic: ctx.onDiagnostic);
+      if (fill.isNone) {
+        fill = RevnixFill(
+          color: (revnixBlockColor(doc.textColor, doc) ?? const Color(0xFFFFFFFF))
+              .withValues(alpha: 0.16),
+        );
+      }
       return _styled(
         block.style,
-        Container(
+        SizedBox(
           height: block.style?.height?.px ?? 1,
-          color: revnixBlockColor(block.style?.fill, doc) ??
-              (revnixBlockColor(doc.textColor, doc) ?? const Color(0xFFFFFFFF))
-                  .withValues(alpha: 0.16),
+          child: RevnixFillBox(fill: fill),
         ),
         skipDecoration: true,
       );
@@ -1293,7 +1445,7 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
     final doc = ctx.doc;
     final size = style?.fontSize ?? defaultSize;
     return TextStyle(
-      color: revnixBlockColor(style?.textColor, doc) ??
+      color: revnixBlockStrokeColor(style?.textColor, doc, onDiagnostic: ctx.onDiagnostic) ??
           revnixBlockColor(doc.textColor, doc) ??
           const Color(0xFFFFFFFF),
       fontSize: size,
@@ -1453,11 +1605,20 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
     // takes no accent fill: the CTA must stay the one accented thing on the
     // screen, or a "Not now" competes with "Subscribe" for the eye.
     final closes = block.action == BlockAction.close && ctx.onClose != null;
-    final accent = revnixBlockColor(style?.fill, doc) ??
-        (closes
+    // `skipDecoration` hands the box back to us, so the fill is resolved here
+    // rather than by `_styled` — which is why a gradient CTA used to flatten to
+    // the plain accent.
+    // The dashboard hands every button's `fill` to CSS `background`; the
+    // close-button rule only decides what happens when there is NO fill.
+    var fill = revnixBlockFill(style?.fill, doc, onDiagnostic: ctx.onDiagnostic);
+    if (fill.isNone && style?.fill == null) {
+      fill = RevnixFill(
+        color: closes
             ? const Color(0x00000000)
-            : revnixBlockColor(doc.accent, doc) ?? const Color(0xFF6478FF));
-    final ink = revnixBlockColor(style?.textColor, doc) ??
+            : revnixBlockColor(doc.accent, doc) ?? const Color(0xFF6478FF),
+      );
+    }
+    final ink = revnixBlockStrokeColor(style?.textColor, doc, onDiagnostic: ctx.onDiagnostic) ??
         (closes
             ? revnixBlockColor(doc.textColor, doc) ?? const Color(0xFFFFFFFF)
             : revnixBlockColor(doc.accentInk, doc) ?? const Color(0xFFFFFFFF));
@@ -1474,18 +1635,18 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
               (ctx.packages.isEmpty ? null : ctx.packages.first.packageId);
           if (id != null) ctx.onPurchase(id);
         },
-        child: Container(
-          height: style?.height?.px,
-          alignment: Alignment.center,
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: sized ? 0 : 15),
-          decoration: BoxDecoration(
-            color: accent,
-            borderRadius: BorderRadius.circular(style?.radius ?? 12),
-          ),
-          child: Text(
-            revnixResolveTags(block.label, pkg, ctx.packages),
-            textAlign: TextAlign.center,
-            style: _textStyle(style, defaultWeight: FontWeight.w800).copyWith(color: ink),
+        child: RevnixFillBox(
+          fill: fill,
+          radius: BorderRadius.circular(style?.radius ?? 12),
+          child: Container(
+            height: style?.height?.px,
+            alignment: Alignment.center,
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: sized ? 0 : 15),
+            child: Text(
+              revnixResolveTags(block.label, pkg, ctx.packages),
+              textAlign: TextAlign.center,
+              style: _textStyle(style, defaultWeight: FontWeight.w800).copyWith(color: ink),
+            ),
           ),
         ),
       ),
@@ -1804,12 +1965,16 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
       right: style.paddingRight ?? style.paddingX ?? style.padding ?? 0,
     );
 
-    final fill = skipDecoration ? null : revnixBlockColor(style.fill, doc);
-    final borderColor = skipDecoration ? null : revnixBlockColor(style.borderColor, doc);
+    final fill = skipDecoration
+        ? const RevnixFill()
+        : revnixBlockFill(style.fill, doc, onDiagnostic: ctx.onDiagnostic);
+    final borderColor = skipDecoration
+        ? null
+        : revnixBlockStrokeColor(style.borderColor, doc, onDiagnostic: ctx.onDiagnostic);
     final hasBorder = borderColor != null || (!skipDecoration && style.borderWidth != null);
-    final decoration = (fill != null || hasBorder || (!skipDecoration && style.radius != null))
+    final decoration = (!fill.isNone || hasBorder || (!skipDecoration && style.radius != null))
         ? BoxDecoration(
-            color: fill,
+            color: fill.color,
             borderRadius: style.radius == null ? null : BorderRadius.circular(style.radius!),
             border: hasBorder
                 ? Border.all(
@@ -1822,8 +1987,38 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
             ? BoxDecoration(border: _sideBorder(style, doc))
             : null);
 
+    // A gradient fill paints as layers behind the content rather than on the
+    // decoration, because CSS `background` can stack several and
+    // BoxDecoration.gradient holds one. The padding moves onto the child so
+    // those layers still cover it — a CSS background covers its padding box.
+    final layers = revnixFillLayers(fill);
+    if (layers.isNotEmpty) {
+      out = Stack(
+        // Passthrough hands the box's own constraints to the content, which is
+        // exactly what it got as the Container's direct child — a stretched
+        // column must not start shrink-wrapping because a gradient arrived.
+        fit: StackFit.passthrough,
+        children: [
+          ...layers,
+          padding == EdgeInsets.zero ? out : Padding(padding: padding, child: out),
+        ],
+      );
+    }
+
+    // A border on `decoration` reserves its width INSIDE the box, insetting the
+    // child — which for a gradient fill means the layers stop short of the
+    // border and the ground shows through under a translucent one. Painting the
+    // same border in FRONT costs no space, so the fill covers its whole box the
+    // way a CSS background does.
+    final foreground = layers.isEmpty || decoration?.border == null
+        ? null
+        : BoxDecoration(
+            border: decoration!.border,
+            borderRadius: decoration.borderRadius,
+          );
     out = Container(
-      padding: padding == EdgeInsets.zero ? null : padding,
+      padding: padding == EdgeInsets.zero || layers.isNotEmpty ? null : padding,
+      foregroundDecoration: foreground,
       width: style.width?.px,
       height: style.height?.px,
       constraints: style.minHeight == null && style.maxWidth?.px == null
@@ -1832,7 +2027,9 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
               minHeight: style.minHeight ?? 0,
               maxWidth: style.maxWidth?.px ?? double.infinity,
             ),
-      decoration: decoration,
+      decoration: foreground == null
+          ? decoration
+          : BoxDecoration(color: decoration!.color, borderRadius: decoration.borderRadius),
       clipBehavior: decoration?.borderRadius != null ? Clip.antiAlias : Clip.none,
       child: out,
     );
@@ -1861,7 +2058,8 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
       if (spec == null) return null;
       final parts = spec.trim().split(RegExp(r'\s+'));
       if (parts.length < 3) return null;
-      final color = revnixBlockColor(parts.sublist(2).join(' '), doc);
+      final color = revnixBlockStrokeColor(parts.sublist(2).join(' '), doc,
+          onDiagnostic: ctx.onDiagnostic);
       if (color == null) return null;
       final width = double.tryParse(parts[0].replaceAll('px', '')) ?? 1;
       return BorderSide(color: color, width: width);

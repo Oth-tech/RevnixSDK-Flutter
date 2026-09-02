@@ -194,20 +194,38 @@ class _Stop {
   final double? position;
 }
 
-_Stop? _parseStop(String raw, Color? Function(String) parseColor) {
-  final s = raw.trim();
-  if (s.isEmpty) return null;
-  // The position is the trailing `<n>%`; everything before it is the colour,
-  // which may itself contain spaces (`rgba(0, 0, 0, 0.5)`).
-  final match = RegExp(r'\s+(-?[\d.]+)%\s*$').firstMatch(s);
-  if (match != null) {
-    final color = parseColor(s.substring(0, match.start).trim());
-    if (color == null) return null;
-    final pct = double.tryParse(match.group(1)!);
-    return _Stop(color, pct == null ? null : (pct / 100).clamp(0.0, 1.0));
+/// One argument of a gradient's stop list, as the stop(s) it stands for.
+///
+/// The positions are the trailing `<n>%` (or a unitless `0`); everything before
+/// them is the colour, which may itself contain spaces (`rgba(0, 0, 0, 0.5)`).
+/// CSS allows TWO positions on one stop — `@accent 0 22%` is the same colour at
+/// both, the hard edge the library's progress bars and split panels are drawn
+/// with — so this answers with a list rather than a single stop.
+List<_Stop> _parseStops(String raw, Color? Function(String) parseColor) {
+  var body = raw.trim();
+  if (body.isEmpty) return const [];
+  final positions = <double>[];
+  final pattern = RegExp(r'\s(-?[\d.]+%|0)\s*$');
+  while (positions.length < 2) {
+    final match = pattern.firstMatch(body);
+    if (match == null) break;
+    final text = match.group(1)!;
+    final isPercent = text.endsWith('%');
+    final value =
+        double.tryParse(isPercent ? text.substring(0, text.length - 1) : text);
+    // The token comes off `body` either way. Leaving a position this build
+    // could not read attached to the colour made the colour unparseable too,
+    // which dropped the whole stop — and a gradient left with one stop does not
+    // parse at all. A malformed position is worth losing; the stop is not.
+    body = body.substring(0, match.start).trim();
+    if (value == null) break;
+    positions.insert(0, (isPercent ? value / 100 : value).clamp(0.0, 1.0));
   }
-  final color = parseColor(s);
-  return color == null ? null : _Stop(color, null);
+  if (body.isEmpty) return const [];
+  final color = parseColor(body);
+  if (color == null) return const [];
+  if (positions.isEmpty) return [_Stop(color, null)];
+  return [for (final position in positions) _Stop(color, position)];
 }
 
 /// Fills in the positions CSS would interpolate for stops that gave none.
@@ -306,8 +324,7 @@ Gradient? _parseOneGradient(String raw, Color? Function(String) parseColor) {
     }
     final stops = <_Stop>[];
     for (var i = first; i < args.length; i++) {
-      final stop = _parseStop(args[i], parseColor);
-      if (stop != null) stops.add(stop);
+      stops.addAll(_parseStops(args[i], parseColor));
     }
     if (stops.length < 2) return null;
     final (begin, end) = _linearAlignments(angle);
@@ -352,8 +369,7 @@ Gradient? _parseOneGradient(String raw, Color? Function(String) parseColor) {
     }
     final stops = <_Stop>[];
     for (var i = first; i < args.length; i++) {
-      final stop = _parseStop(args[i], parseColor);
-      if (stop != null) stops.add(stop);
+      stops.addAll(_parseStops(args[i], parseColor));
     }
     if (stops.length < 2) return null;
     return RadialGradient(
@@ -404,10 +420,9 @@ double? _angleForKeyword(String keyword) {
 /// stack over their base, not with the base itself. Fully transparent stops
 /// are skipped for the same reason.
 ///
-/// This is NOT what `@bg` resolves to. The dashboard answers that token with
-/// the raw ground, which `color-mix()` cannot take when it is a gradient, so a
-/// `@bg` tint over a gradient renders nothing in the builder — and must render
-/// nothing here too, or the device stops matching the design.
+/// This is ALSO what `@bg` resolves to: the dashboard feeds that token into
+/// `color-mix()`, which cannot take a gradient, so it collapses a gradient ground
+/// to one colour exactly as this does.
 String revnixBackgroundBaseColor(String? ground) {
   final s = ground?.trim() ?? '';
   if (s.isEmpty) return '#000000';
@@ -427,7 +442,27 @@ String revnixBackgroundBaseColor(String? ground) {
 /// colour parser (which lives above this file and would close a cycle). Only
 /// the two forms the dashboard emits are recognised; anything else counts as
 /// opaque, which is the safe answer for picking a ground.
+/// Whether a paint string's BOTTOM layer is a repeating pattern.
+///
+/// A `repeating-*` gradient is a TEXTURE, and the colours inside it are stripe
+/// colours rather than the surface's. When a build cannot draw one, painting a
+/// colour lifted out of its arguments across the whole box is a WRONG answer
+/// rather than a degraded one — the library's `repeating-linear-gradient(180deg,
+/// #0E1B21 0 1px, @bg 1px 26px)` is a hairline every 26px, and its first colour
+/// as a solid fill is a slab. Such a fill paints nothing instead.
+///
+/// The bottom layer is the one that decides, so a pattern stacked over a real
+/// ground (`repeating-…(…), #FBF3E4`) still falls back to that ground.
+bool revnixIsRepeatingPattern(String? css) {
+  final s = css?.trim() ?? '';
+  if (s.isEmpty) return false;
+  final layers = _splitTopLevel(s);
+  final bottom = layers.isEmpty ? s : layers.last;
+  return bottom.toLowerCase().startsWith('repeating-');
+}
+
 bool _isFullyTransparent(String color) {
+  if (color.trim().toLowerCase() == 'transparent') return true;
   final s = color.trim();
   if (s.startsWith('#')) {
     final hex = s.substring(1);
