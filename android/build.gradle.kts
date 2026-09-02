@@ -11,7 +11,7 @@ buildscript {
     dependencies {
         classpath("com.android.tools.build:gradle:9.0.1")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion")
-        // Vendored revnix-core models are @Serializable.
+        // revnix-core models are @Serializable.
         classpath("org.jetbrains.kotlin:kotlin-serialization:$kotlinVersion")
     }
 }
@@ -41,7 +41,15 @@ android {
 
     sourceSets {
         getByName("main") {
-            java.srcDirs("src/main/kotlin")
+            java.srcDirs(
+                "src/main/kotlin",
+                // revnix-kotlin is the git submodule at android/revnix-kotlin,
+                // compiled straight into this AAR until it ships to Maven
+                // Central — then drop these two dirs and depend on
+                //   implementation("com.revnix:revnix-android:<version>")
+                "revnix-kotlin/revnix-core/src/main/kotlin",
+                "revnix-kotlin/revnix-android/src/main/kotlin",
+            )
         }
         getByName("test") {
             java.srcDirs("src/test/kotlin")
@@ -76,11 +84,8 @@ kotlin {
 }
 
 dependencies {
-    // revnix-kotlin (revnix-core + revnix-android) is VENDORED under
-    // src/main/kotlin/com/revnix — see the note there. Once it ships to Maven
-    // Central, delete the vendored sources and restore
-    //   implementation("com.revnix:revnix-android:0.1.0")
-    // These are its dependencies, carried over verbatim:
+    // revnix-kotlin's own dependencies (android/revnix-kotlin/*/build.gradle.kts),
+    // carried over verbatim so the submodule sources compile here:
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

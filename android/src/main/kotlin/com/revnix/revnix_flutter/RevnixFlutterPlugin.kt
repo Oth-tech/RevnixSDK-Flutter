@@ -288,14 +288,13 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             },
         ),
         // Passed through loose — Dart owns the typed PaywallConfig parse, so a
-        // new dashboard field never requires a native release.
-        "paywall" to bridgeValue(resolution.paywall),
-        // REV-219. Spelled out field by field — the paywall key was once
-        // dropped right here, and a lost experiment would silently corrupt
-        // A/B attribution.
-        "experiment" to resolution.experiment?.let { exp ->
-            mapOf("key" to exp.key, "variantId" to exp.variantId)
-        },
+        // new dashboard field never requires a native release. The raw copy,
+        // not the typed `paywall`, so nothing is lost on the way through.
+        "paywall" to bridgeValue(resolution.paywallJson),
+        // REV-219. The paywall key was once dropped right here, and a lost
+        // experiment would silently corrupt A/B attribution — so this is the
+        // raw wire value too, same as `paywall`; null stays null.
+        "experiment" to bridgeValue(resolution.experimentJson),
     )
 
     /** Loose JSON → StandardMessageCodec-safe values (maps/lists/primitives). */

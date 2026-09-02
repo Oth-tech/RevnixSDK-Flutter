@@ -1,0 +1,6 @@
+[submodule "android/revnix-kotlin"]
+	path = android/revnix-kotlin
+	url = https://github.com/Oth-tech/RevnixSDK-Android.git
+[submodule "ios/revnix_flutter/Revnix"]
+	path = ios/revnix_flutter/Revnix
+	url = https://github.com/Oth-tech/RevnixSDK-iOS.git

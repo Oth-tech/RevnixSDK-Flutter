@@ -1,3 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
   package="com.revnix.revnix_flutter">
+    <!-- Carried over from revnix-android's manifest: the submodule sources
+         compile into this AAR, so its manifest is not merged automatically. -->
+    <uses-permission android:name="android.permission.INTERNET" />
 </manifest>

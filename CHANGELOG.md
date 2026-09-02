@@ -1,3 +1,16 @@
+## Unreleased
+
+- The native SDKs are git submodules (`ios/revnix_flutter/Revnix` → RevnixSDK-iOS,
+  `android/revnix-kotlin` → RevnixSDK-Android) instead of vendored copies,
+  which had already drifted from upstream. Clone with
+  `--recurse-submodules`. Both bridges now forward the placement's `paywall`
+  as the raw wire value (upstream `paywallJSON` / `paywallJson`), so a
+  designed paywall from a newer dashboard reaches Dart untouched. Until the
+  package is on pub.dev, install it as a path dependency from a recursive
+  clone: a pubspec `git:` dependency does not fetch submodules.
+- The Swift package's iOS floor is 16.0, matching the podspec and
+  revnix-swift (it said 13.0).
+
 ## 0.2.0
 
 A/B experiments (REV-219) — parity with `revnix-swift` 0.2.0 and
