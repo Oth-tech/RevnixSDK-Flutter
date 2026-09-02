@@ -192,6 +192,7 @@ class RevnixPaywall extends StatefulWidget {
     this.placementKey,
     this.paywallId,
     this.disableViewTracking = false,
+    this.onDiagnostic,
   });
 
   final PaywallConfig config;
@@ -242,6 +243,17 @@ class RevnixPaywall extends StatefulWidget {
 
   /// Opt out of the automatic view report while still passing [client].
   final bool disableViewTracking;
+
+  /// Reports a paint string the block renderer could not read — a `fill`,
+  /// border or text colour in a form this SDK version does not understand.
+  ///
+  /// Local only: nothing is sent anywhere. The screen still draws (an
+  /// unreadable fill falls back to a colour from the design rather than to
+  /// black), so this is the only way to learn that a paywall is rendering
+  /// approximately. [RevnixClient.diagnostics] carries the client's own
+  /// swallowed failures and is a separate stream; render diagnostics are
+  /// synchronous and belong to the widget that drew them.
+  final void Function(RevnixDiagnostic diagnostic)? onDiagnostic;
 
   @override
   State<RevnixPaywall> createState() => _RevnixPaywallState();
@@ -340,6 +352,11 @@ class _RevnixPaywallState extends State<RevnixPaywall> {
         onTerms: widget.onTerms,
         onPrivacy: widget.onPrivacy,
         onClose: widget.onClose == null ? null : _close,
+        onDiagnostic: widget.onDiagnostic == null
+            ? null
+            : (message) => widget.onDiagnostic!(
+                  RevnixDiagnostic(op: 'paywall.render', message: message),
+                ),
       ),
     );
   }
