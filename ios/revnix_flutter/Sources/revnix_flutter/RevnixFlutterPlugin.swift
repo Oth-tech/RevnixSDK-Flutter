@@ -1,8 +1,11 @@
 import Flutter
 import UIKit
-// revnix-swift is vendored into this target (Sources/revnix_flutter/Revnix —
-// same module, so no `import Revnix`). Once it ships to CocoaPods/SPM, delete
-// the vendored folder, restore the import, and re-add the podspec dependency.
+// revnix-swift is the git submodule at ios/revnix_flutter/Revnix. Under Swift Package
+// Manager it is its own module (imported here); under CocoaPods the podspec
+// compiles the same sources into this module, so there is nothing to import.
+#if canImport(Revnix)
+    import Revnix
+#endif
 
 /// iOS side of the Flutter bridge — a thin adapter over `revnix-swift`.
 ///
@@ -234,14 +237,14 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
                 },
             ] as [String: Any?],
             // Passed through loose — Dart owns the typed PaywallConfig parse,
-            // so a new dashboard field never requires a native release.
-            "paywall": resolution.paywall.map(Self.bridgeValue),
-            // REV-219. Spelled out field by field — the paywall key was once
-            // dropped right here, and a lost experiment would silently corrupt
-            // A/B attribution.
-            "experiment": resolution.experiment.map { exp in
-                ["key": exp.key, "variantId": exp.variantId] as [String: Any?]
-            },
+            // so a new dashboard field never requires a native release. The
+            // raw copy, not the typed `paywall`: that one is decoded through
+            // the native block model and drops what it does not know.
+            "paywall": resolution.paywallJSON.map(Self.bridgeValue),
+            // REV-219. The paywall key was once dropped right here, and a lost
+            // experiment would silently corrupt A/B attribution — so this is
+            // the raw wire value too, same as `paywall`; nil stays nil.
+            "experiment": resolution.experimentJSON.map(Self.bridgeValue),
         ]
     }
 

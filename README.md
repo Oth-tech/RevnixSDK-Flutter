@@ -6,10 +6,12 @@ entitlements, wrapping the native SDKs rather than reimplementing them.
 - **iOS** → [`RevnixSDK-iOS`](https://github.com/Oth-tech/RevnixSDK-iOS) (StoreKit 2)
 - **Android** → [`RevnixSDK-Android`](https://github.com/Oth-tech/RevnixSDK-Android) (Play Billing 8)
 
-> Until those SDKs ship to CocoaPods / Maven Central, their 0.2.0 sources are
-> **vendored** inside this plugin (`ios/…/Revnix/`, `android/…/com/revnix/`)
-> so the plugin builds standalone. Fix native bugs upstream, then re-copy.
-> See [`android/src/main/kotlin/com/revnix/VENDORED.md`](android/src/main/kotlin/com/revnix/VENDORED.md).
+> Those SDKs are not on CocoaPods / Maven Central yet, so this plugin carries
+> them as **git submodules** (`ios/revnix_flutter/Revnix`, `android/revnix-kotlin`) and
+> compiles their sources straight into the plugin. Clone with
+> `git clone --recurse-submodules` (or run `git submodule update --init`
+> in an existing checkout). To pick up a native fix, bump the submodule pin;
+> never edit the native sources from here.
 
 ## Why a wrapper and not a Dart client
 
@@ -173,15 +175,20 @@ gates fail closed.
 ## Status
 
 **Builds; not published.** The plugin compiles and runs end to end on both
-platforms, the native sources are vendored (see the note at the top), so it
-no longer depends on unpublished CocoaPods/Maven artifacts. The Dart layer is
+platforms; the native SDKs come in as git submodules (see the note at the
+top), so it does not depend on unpublished CocoaPods/Maven artifacts. The Dart layer is
 complete and tested (`flutter test`, 29 tests covering error rehydration, the
 `stale` flag, gate fail-closed behaviour, and wire marshalling).
 
 What remains is distribution: `revnix_flutter` 0.2.0 is not on pub.dev, so it
-can only be consumed as a path or git dependency today. When the native SDKs
-reach CocoaPods and Maven Central, the vendored copies should be dropped in
-favour of real dependencies before publishing.
+can only be consumed as a **path dependency** today, from a checkout cloned
+with `--recurse-submodules`. A pubspec `git:` dependency does not work: pub
+does not fetch submodules, so the native sources would be missing. The pub.dev
+archive does include the submodule contents (`flutter pub publish --dry-run`
+lists them), so publishing needs no extra step. When the native SDKs
+reach CocoaPods and Maven Central, the submodules should be swapped for real
+dependencies before publishing: one line each in `ios/revnix_flutter.podspec`
+and `android/build.gradle.kts`, both marked in place.
 
 ## v1 non-goals
 
