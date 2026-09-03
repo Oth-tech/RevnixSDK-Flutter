@@ -17,6 +17,34 @@ enum RevnixStore {
           orElse: () => RevnixStore.apple);
 }
 
+/// REV-263: the six paywall interactions [RevnixClient.logPaywallEvent] can
+/// report — what the customer did on a display, between the view that opened
+/// it and the close or purchase that ended it. The server turns each into the
+/// ledger type `paywall.<wireName>`.
+enum RevnixPaywallEvent {
+  /// A package was picked.
+  selected('selected'),
+
+  /// Checkout was started.
+  purchaseStarted('purchase_started'),
+
+  /// The customer backed out at the store sheet.
+  purchaseAbandoned('purchase_abandoned'),
+
+  /// The store refused the payment.
+  purchaseFailed('purchase_failed'),
+
+  /// Restore purchases was tapped.
+  restore('restore'),
+
+  /// The paywall itself failed — config, products, or render.
+  error('error');
+
+  const RevnixPaywallEvent(this.wireName);
+
+  final String wireName;
+}
+
 class EntitlementSource {
   const EntitlementSource({
     required this.kind,

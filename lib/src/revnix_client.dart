@@ -181,6 +181,52 @@ class RevnixClient {
         'paywallId': ?paywallId,
       });
 
+  /// Report one of the six paywall interactions (REV-263) — what the customer
+  /// DID on a display, between the [logPaywallShown] that opened it and the
+  /// [logPaywallClosed] (or purchase) that ended it.
+  ///
+  /// Fire-and-forget like the other beacons.
+  ///
+  /// [viewId] is the id [logPaywallShown] resolved with for THIS display.
+  /// Passing it is what threads the whole life of one impression together and
+  /// puts the event on the paywall's own analytics row.
+  ///
+  /// [RevnixPaywall] reports [RevnixPaywallEvent.selected],
+  /// [RevnixPaywallEvent.purchaseStarted], [RevnixPaywallEvent.restore] and a
+  /// no-products [RevnixPaywallEvent.error] for you. The purchase OUTCOME is
+  /// yours: only your app performs the store call, so report
+  /// [RevnixPaywallEvent.purchaseAbandoned] /
+  /// [RevnixPaywallEvent.purchaseFailed] from your own in_app_purchase error
+  /// handling.
+  ///
+  /// [eventId] is the idempotency key and defaults to [viewId], which caps the
+  /// report at one per display per event. Pass one per occurrence — and reuse
+  /// it across your own retries — to record each occurrence.
+  Future<void> logPaywallEvent(
+    RevnixPaywallEvent event,
+    String viewId, {
+    String? placementKey,
+    String? paywallId,
+    String? productId,
+    String? code,
+    String? message,
+    String? eventId,
+  }) =>
+      _invoke<void>('logPaywallEvent', {
+        'event': event.wireName,
+        'viewId': viewId,
+        'placementKey': ?placementKey,
+        'paywallId': ?paywallId,
+        'productId': ?productId,
+        'code': ?code,
+        // The server bounds `message` at 1024; trimming here keeps a long
+        // localized store error from turning the whole report into a 400.
+        'message': ?(message != null && message.length > 1024
+            ? message.substring(0, 1024)
+            : message),
+        'eventId': ?eventId,
+      });
+
   /// Set attributes on the current customer. Attributes are what A/B-test
   /// audiences target — set `country`, `app_version`, `locale`, or any custom
   /// key you want to segment on. A null value deletes the key.

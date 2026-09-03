@@ -35,6 +35,7 @@ class RevnixPaywallPackage {
     this.period,
     this.amountMinor,
     this.currency,
+    this.productId,
   });
 
   final String packageId;
@@ -52,6 +53,12 @@ class RevnixPaywallPackage {
   /// [revnixMinorUnits] before converting from major units.
   final int? amountMinor;
   final String? currency;
+
+  /// REV-263: the catalog product behind this package. Only telemetry reads it
+  /// — a `selected` or `purchaseStarted` report names the plan the way the rest
+  /// of the ledger does. Optional: without it the interaction is still
+  /// reported, just with no plan attached.
+  final String? productId;
 }
 
 /// Colors the paywall renders with. Every field is optional — a null field
@@ -281,6 +288,16 @@ class _RevnixPaywallState extends State<RevnixPaywall> {
       // than awaited into state — rebuilding the paywall the instant its view
       // is recorded would be a pointless frame.
       unawaited(report);
+      // REV-263: an offering with nothing to sell is the one failure the
+      // widget can see by itself, and the one most worth knowing about — the
+      // paywall painted, the customer could not buy.
+      if (widget.packages.isEmpty) {
+        _report(
+          RevnixPaywallEvent.error,
+          code: 'no_products',
+          message: 'paywall displayed with no packages',
+        );
+      }
     }
   }
 
@@ -314,8 +331,87 @@ class _RevnixPaywallState extends State<RevnixPaywall> {
     }, onError: (_) {}));
   }
 
+  // ——— REV-263: the interaction vocabulary ———
+  //
+  // The widget reports what it genuinely OBSERVES: the selection change, the
+  // CTA press, the restore press, and an offering that arrived with nothing to
+  // sell. It never reports the purchase OUTCOME — the store call happens in
+  // the host, so only the host knows whether the customer cancelled at the
+  // sheet or the payment was refused. Report those with
+  // `client.logPaywallEvent(...)` from your own in_app_purchase handling.
+  void _report(
+    RevnixPaywallEvent event, {
+    String? productId,
+    String? code,
+    String? message,
+    String? eventId,
+  }) {
+    final client = widget.client;
+    final report = _viewReport;
+    if (client == null || widget.disableViewTracking || report == null) return;
+    // Awaiting the view beacon for the same reason the close does: an
+    // interaction reported before the display id exists could not be tied to
+    // the display it happened on.
+    unawaited(report.then((viewId) {
+      if (viewId == null) return null;
+      return client
+          .logPaywallEvent(
+            event,
+            viewId,
+            placementKey: widget.placementKey,
+            paywallId: widget.paywallId,
+            productId: productId,
+            code: code,
+            message: message,
+            eventId: eventId == null ? null : '$viewId:$eventId',
+          )
+          .then((_) {}, onError: (_) {});
+    }, onError: (_) {}));
+  }
+
+  /// The catalog product behind a package, so a report names the plan the way
+  /// the rest of the ledger does. Null when the offering did not carry one —
+  /// reporting the package id instead would look like a product that does not
+  /// exist.
+  String? _productIdFor(String packageId) {
+    for (final pkg in widget.packages) {
+      if (pkg.packageId == packageId) return pkg.productId;
+    }
+    return null;
+  }
+
+  /// Rises per CTA press, so a retry after a failure is its own occurrence
+  /// rather than a duplicate of the first try.
+  int _purchaseAttempts = 0;
+
+  /// Every CTA path routes through here, so the start report can never be
+  /// wired on one render path and forgotten on the other.
+  void _purchase(String packageId) {
+    _purchaseAttempts += 1;
+    _report(
+      RevnixPaywallEvent.purchaseStarted,
+      productId: _productIdFor(packageId),
+      eventId: 'buy:$_purchaseAttempts',
+    );
+    widget.onPurchase(packageId);
+  }
+
+  /// Restore — the report rides along with the host's handler.
+  void _restore() {
+    _report(RevnixPaywallEvent.restore);
+    widget.onRestore?.call();
+  }
+
   void _select(String packageId) {
     setState(() => _internalSelected = packageId);
+    // One report per (display, package): a customer toggling monthly → yearly
+    // → monthly weighed two plans, not three, and the server's default key
+    // (the viewId alone) would keep only the first.
+    _report(
+      RevnixPaywallEvent.selected,
+      productId: _productIdFor(packageId),
+      eventId: 'sel:$packageId',
+    );
     widget.onSelectPackage?.call(packageId);
   }
 
@@ -345,10 +441,10 @@ class _RevnixPaywallState extends State<RevnixPaywall> {
         footerTermsUrl: widget.config.footer?.termsUrl,
         footerPrivacyUrl: widget.config.footer?.privacyUrl,
         onPurchase: (id) {
-          if (!widget.loading) widget.onPurchase(id);
+          if (!widget.loading) _purchase(id);
         },
         onSelect: _select,
-        onRestore: widget.onRestore,
+        onRestore: widget.onRestore == null ? null : _restore,
         onTerms: widget.onTerms,
         onPrivacy: widget.onPrivacy,
         onClose: widget.onClose == null ? null : _close,
@@ -417,7 +513,7 @@ class _RevnixPaywallState extends State<RevnixPaywall> {
 
     final footerItems = <({String label, VoidCallback? onTap})>[
       if (footer?.showRestore ?? true)
-        (label: 'Restore', onTap: widget.onRestore),
+        (label: 'Restore', onTap: widget.onRestore == null ? null : _restore),
       if (footer?.showTerms ?? true)
         (label: 'Terms', onTap: widget.onTerms ?? openUrl(footer?.termsUrl)),
       if (footer?.showPrivacy ?? true)
@@ -1371,7 +1467,7 @@ class _RevnixPaywallState extends State<RevnixPaywall> {
       child: GestureDetector(
         onTap: () {
           if (!widget.loading && selectedId != null) {
-            widget.onPurchase(selectedId);
+            _purchase(selectedId);
           }
         },
         child: Container(

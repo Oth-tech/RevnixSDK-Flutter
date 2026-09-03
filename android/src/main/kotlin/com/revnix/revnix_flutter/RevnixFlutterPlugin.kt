@@ -9,6 +9,7 @@ import com.revnix.RegisterPurchaseResult
 import com.revnix.RevnixClient
 import com.revnix.RevnixConfig
 import com.revnix.RevnixError
+import com.revnix.RevnixPaywallEvent
 import com.revnix.RevnixStore
 import com.revnix.android.AndroidStorage
 import com.revnix.android.PlayBillingConnector
@@ -168,6 +169,30 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                             paywallId = call.argument<String>("paywallId"),
                         )
                         result.success(null)
+                    }
+                    "logPaywallEvent" -> {
+                        // REV-263: the wire name Dart sent maps 1:1 onto the
+                        // enum's wireName; an unknown one is a Dart/native
+                        // version skew, and reporting nothing beats reporting
+                        // the wrong event.
+                        val raw = call.argument<String>("event")
+                        val event = RevnixPaywallEvent.entries
+                            .firstOrNull { it.wireName == raw }
+                        if (event == null) {
+                            result.success(null)
+                        } else {
+                            active.logPaywallEvent(
+                                event = event,
+                                viewId = call.argument<String>("viewId").orEmpty(),
+                                placementKey = call.argument<String>("placementKey"),
+                                paywallId = call.argument<String>("paywallId"),
+                                productId = call.argument<String>("productId"),
+                                code = call.argument<String>("code"),
+                                message = call.argument<String>("message"),
+                                eventId = call.argument<String>("eventId"),
+                            )
+                            result.success(null)
+                        }
                     }
                     "setAttributes" -> {
                         active.setAttributes(
