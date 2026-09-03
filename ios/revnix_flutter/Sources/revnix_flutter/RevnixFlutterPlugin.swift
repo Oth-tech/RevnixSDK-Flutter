@@ -112,6 +112,27 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
                         placementKey: args["placementKey"] as? String,
                         paywallId: args["paywallId"] as? String)
                     result(nil)
+                case "logPaywallEvent":
+                    // REV-263: the wire name Dart sent maps 1:1 onto the
+                    // enum's rawValue; an unknown one is a Dart/native
+                    // version skew, and reporting nothing beats reporting the
+                    // wrong event.
+                    guard let raw = args["event"] as? String,
+                        let event = RevnixPaywallEvent(rawValue: raw)
+                    else {
+                        result(nil)
+                        return
+                    }
+                    await client.logPaywallEvent(
+                        event,
+                        viewId: args["viewId"] as? String ?? "",
+                        placementKey: args["placementKey"] as? String,
+                        paywallId: args["paywallId"] as? String,
+                        productId: args["productId"] as? String,
+                        code: args["code"] as? String,
+                        message: args["message"] as? String,
+                        eventId: args["eventId"] as? String)
+                    result(nil)
                 case "setAttributes":
                     let raw = args["attributes"] as? [String: Any] ?? [:]
                     try await client.setAttributes(Self.jsonValues(raw))
