@@ -401,11 +401,44 @@ enum BlockAction {
       value == 'close' ? BlockAction.close : null;
 }
 
+/// When a block is drawn, relative to the selected context it sits in
+/// (REV-262 §1). Absent means always.
+enum BlockVisibility {
+  /// Drawn only while the block is in selected context.
+  selected,
+
+  /// Drawn only while it is NOT.
+  unselected;
+
+  /// A value this SDK does not know leaves the block always drawn — hiding
+  /// an element on a guess is the worse failure.
+  static BlockVisibility? parse(String? value) => switch (value) {
+        'selected' => BlockVisibility.selected,
+        'unselected' => BlockVisibility.unselected,
+        _ => null,
+      };
+}
+
 @immutable
 abstract class PaywallBlock {
-  const PaywallBlock({required this.id, this.style});
+  const PaywallBlock({
+    required this.id,
+    this.style,
+    this.selectedStyle,
+    this.visibility,
+  });
   final String id;
   final BlockStyle? style;
+
+  /// Merged over [style], field by field, while the block is in SELECTED
+  /// CONTEXT — inside the plan card of the selected package (REV-262 §1).
+  /// Valid on every block type: a tick mark, a ring, a caption can all answer
+  /// the selection, not only the card around them.
+  final BlockStyle? selectedStyle;
+
+  /// Draw only in / only outside selected context. Ignored at the root and in
+  /// any subtree that no package card encloses — a root block is never hidden.
+  final BlockVisibility? visibility;
 }
 
 class TextBlock extends PaywallBlock {
@@ -413,6 +446,8 @@ class TextBlock extends PaywallBlock {
     required super.id,
     required this.text,
     super.style,
+    super.selectedStyle,
+    super.visibility,
     this.action,
   });
   final String text;
@@ -429,6 +464,8 @@ class ImageBlock extends PaywallBlock {
     this.fit,
     this.placeholder,
     super.style,
+    super.selectedStyle,
+    super.visibility,
     this.action,
   });
 
@@ -448,6 +485,8 @@ class ListBlock extends PaywallBlock {
     this.items = const [],
     this.iconColor,
     super.style,
+    super.selectedStyle,
+    super.visibility,
   });
   final List<BlockListItem> items;
 
@@ -467,6 +506,8 @@ class ProductsBlock extends PaywallBlock {
     this.cardStyle,
     this.highlightStyle,
     super.style,
+    super.selectedStyle,
+    super.visibility,
   });
   final String? direction;
   final String? titleTpl;
@@ -482,6 +523,8 @@ class ButtonBlock extends PaywallBlock {
     required super.id,
     required this.label,
     super.style,
+    super.selectedStyle,
+    super.visibility,
     this.action,
   });
   final String label;
@@ -500,6 +543,8 @@ class LinksBlock extends PaywallBlock {
     this.termsUrl,
     this.privacyUrl,
     super.style,
+    super.selectedStyle,
+    super.visibility,
   });
   final bool? showRestore;
   final bool? showTerms;
@@ -509,11 +554,22 @@ class LinksBlock extends PaywallBlock {
 }
 
 class LineBlock extends PaywallBlock {
-  const LineBlock({required super.id, super.style});
+  const LineBlock({
+    required super.id,
+    super.style,
+    super.selectedStyle,
+    super.visibility,
+  });
 }
 
 class SpacerBlock extends PaywallBlock {
-  const SpacerBlock({required super.id, this.flex, super.style});
+  const SpacerBlock({
+    required super.id,
+    this.flex,
+    super.style,
+    super.selectedStyle,
+    super.visibility,
+  });
 
   /// Grows to push what follows to the bottom.
   final bool? flex;
@@ -527,20 +583,18 @@ class CardBlock extends PaywallBlock {
     required super.id,
     this.layout,
     this.repeat,
-    this.selectedStyle,
     this.packageIndex,
     this.columns,
     this.gridColumns,
     this.children = const [],
     super.style,
+    super.selectedStyle,
+    super.visibility,
   });
   final String? layout;
 
   /// Renders this container once per package in the attached offering.
   final String? repeat;
-
-  /// Merged over `style` on the package the customer has selected.
-  final BlockStyle? selectedStyle;
 
   /// "This card describes package N of the offering". A card whose index the
   /// offering does not reach is hidden.
@@ -633,6 +687,11 @@ class PaywallBlockDoc {
     int? i(String key) => value[key] is num ? (value[key] as num).toInt() : null;
     final id = s('id') ?? '';
     final style = BlockStyle.from(value['style']);
+    // Every type carries these two (REV-262 §1), so they are read once here
+    // rather than per case — a type that forgot them would silently ignore a
+    // selection answer the design authored.
+    final selectedStyle = BlockStyle.from(value['selectedStyle']);
+    final visibility = BlockVisibility.parse(s('visibility'));
     final action = BlockAction.parse(s('action'));
     switch (value['type']) {
       case 'text':
@@ -640,6 +699,8 @@ class PaywallBlockDoc {
           id: id,
           text: s('text') ?? '',
           style: style,
+          selectedStyle: selectedStyle,
+          visibility: visibility,
           action: action,
         );
       case 'image':
@@ -651,6 +712,8 @@ class PaywallBlockDoc {
           placeholder: s('placeholder'),
           action: action,
           style: style,
+          selectedStyle: selectedStyle,
+          visibility: visibility,
         );
       case 'list':
         return ListBlock(
@@ -668,6 +731,8 @@ class PaywallBlockDoc {
               .toList(),
           iconColor: s('iconColor'),
           style: style,
+          selectedStyle: selectedStyle,
+          visibility: visibility,
         );
       case 'products':
         return ProductsBlock(
@@ -680,12 +745,16 @@ class PaywallBlockDoc {
           cardStyle: BlockStyle.from(value['cardStyle']),
           highlightStyle: BlockStyle.from(value['highlightStyle']),
           style: style,
+          selectedStyle: selectedStyle,
+          visibility: visibility,
         );
       case 'button':
         return ButtonBlock(
           id: id,
           label: s('label') ?? '',
           style: style,
+          selectedStyle: selectedStyle,
+          visibility: visibility,
           action: action,
         );
       case 'links':
@@ -697,23 +766,37 @@ class PaywallBlockDoc {
           termsUrl: s('termsUrl'),
           privacyUrl: s('privacyUrl'),
           style: style,
+          selectedStyle: selectedStyle,
+          visibility: visibility,
         );
       case 'line':
-        return LineBlock(id: id, style: style);
+        return LineBlock(
+          id: id,
+          style: style,
+          selectedStyle: selectedStyle,
+          visibility: visibility,
+        );
       case 'spacer':
-        return SpacerBlock(id: id, flex: b('flex'), style: style);
+        return SpacerBlock(
+          id: id,
+          flex: b('flex'),
+          style: style,
+          selectedStyle: selectedStyle,
+          visibility: visibility,
+        );
       case 'card':
         return CardBlock(
           id: id,
           layout: s('layout'),
           repeat: s('repeat'),
-          selectedStyle: BlockStyle.from(value['selectedStyle']),
           packageIndex: i('packageIndex'),
           columns: i('columns'),
           gridColumns: s('gridColumns'),
           children:
               (value['children'] as List<Object?>? ?? const []).map(_parseBlock).toList(),
           style: style,
+          selectedStyle: selectedStyle,
+          visibility: visibility,
         );
       default:
         // A block type from a newer dashboard. Skipped when rendering.
@@ -881,6 +964,220 @@ String revnixResolveTags(
         return raw;
     }
   });
+}
+
+// ——— selection and selected context (REV-262 §1–2) ———
+
+/// The package the screen treats as selected, by the rule every renderer
+/// shares: the host's choice if it names an OFFERED package, else the
+/// renderer's own selection after a tap, else the config's highlight, else
+/// the first package. Null only when nothing is offered.
+///
+/// The host's id is checked against the offering rather than trusted: a host
+/// that pins a package the offering no longer carries would otherwise leave
+/// every plan card unselected and the CTA buying nothing.
+String? revnixResolveSelectedPackageId(
+  List<RevnixPaywallPackage> packages, {
+  String? hostSelected,
+  String? internalSelected,
+  String? highlight,
+}) {
+  bool offered(String? id) => id != null && packages.any((p) => p.packageId == id);
+  if (offered(hostSelected)) return hostSelected;
+  if (offered(internalSelected)) return internalSelected;
+  if (offered(highlight)) return highlight;
+  return packages.isEmpty ? null : packages.first.packageId;
+}
+
+/// [selectedPackageId] as a package when the offering carries it, else the
+/// first package — what root-level tags resolve against and what the CTA
+/// buys.
+RevnixPaywallPackage? revnixSelectedPackage(
+  List<RevnixPaywallPackage> packages,
+  String? selectedPackageId,
+) {
+  for (final p in packages) {
+    if (p.packageId == selectedPackageId) return p;
+  }
+  return packages.isEmpty ? null : packages.first;
+}
+
+/// Where in the tree a block is being resolved: the package its tags read,
+/// and whether it sits inside the SELECTED package's card.
+///
+/// [selected] is null outside any package card. There `selectedStyle` and
+/// `visibility` are inert — a root-level block is never hidden, whatever it
+/// asks for — and tags resolve against the selected package.
+@immutable
+class RevnixBlockScope {
+  const RevnixBlockScope({this.package, this.selected});
+
+  /// The document root: tags read the selected package, no selected context.
+  const RevnixBlockScope.root(RevnixPaywallPackage? selectedPackage)
+      : this(package: selectedPackage);
+
+  final RevnixPaywallPackage? package;
+
+  /// Null outside any package card; otherwise whether the enclosing package
+  /// card's package is the selected one.
+  final bool? selected;
+
+  bool get inSelectedContext => selected == true;
+
+  /// The scope of a package card's subtree — a pinned card, or one instance
+  /// of a `repeat: "packages"` card. The nearest package-bearing ancestor
+  /// wins, so entering from any depth replaces the context outright.
+  RevnixBlockScope enter(
+    RevnixPaywallPackage? package,
+    RevnixPaywallPackage? selectedPackage,
+  ) =>
+      RevnixBlockScope(
+        package: package,
+        selected: package != null &&
+            selectedPackage != null &&
+            package.packageId == selectedPackage.packageId,
+      );
+}
+
+/// The package a pinned card describes, or null when the card is not pinned
+/// or the offering does not reach its index. A negative index counts as
+/// unreachable — indexing the list with it used to throw and take the screen.
+RevnixPaywallPackage? revnixPinnedPackage(
+  CardBlock card,
+  List<RevnixPaywallPackage> packages,
+) {
+  final index = card.packageIndex;
+  if (index == null || index < 0 || index >= packages.length) return null;
+  return packages[index];
+}
+
+/// The scope a block's OWN style and visibility resolve against.
+///
+/// A pinned card decides its own context — its package against the selected
+/// one — which is also what its children inherit. Every other block (a
+/// `repeat` card included; its instances are scoped one by one where they
+/// render) resolves against the scope it was given.
+RevnixBlockScope revnixOwnScope(
+  PaywallBlock block,
+  RevnixBlockScope parent,
+  List<RevnixPaywallPackage> packages,
+  RevnixPaywallPackage? selectedPackage,
+) {
+  if (block is CardBlock && block.packageIndex != null) {
+    final pinned = revnixPinnedPackage(block, packages);
+    if (pinned != null) return parent.enter(pinned, selectedPackage);
+  }
+  return parent;
+}
+
+/// The style a block draws with in [scope]: `selectedStyle` merged over
+/// `style` while in selected context, the base style otherwise.
+BlockStyle? revnixEffectiveStyle(PaywallBlock block, RevnixBlockScope scope) {
+  final selectedStyle = block.selectedStyle;
+  if (selectedStyle == null || !scope.inSelectedContext) return block.style;
+  return (block.style ?? const BlockStyle()).merging(selectedStyle);
+}
+
+/// Whether a block is drawn in [scope]. Outside any package card the answer
+/// is always yes.
+bool revnixBlockVisible(PaywallBlock block, RevnixBlockScope scope) {
+  final selected = scope.selected;
+  if (selected == null) return true;
+  return switch (block.visibility) {
+    null => true,
+    BlockVisibility.selected => selected,
+    BlockVisibility.unselected => !selected,
+  };
+}
+
+/// One block after the selection rules: what [RevnixPaywallBlockScreen]
+/// draws it with, without the widgets.
+@immutable
+class RevnixResolvedBlock {
+  const RevnixResolvedBlock({
+    required this.block,
+    required this.scope,
+    required this.style,
+    required this.visible,
+    this.text,
+  });
+
+  final PaywallBlock block;
+  final RevnixBlockScope scope;
+
+  /// The effective style — after `selectedStyle`.
+  final BlockStyle? style;
+
+  /// Drawn: its own rule AND every ancestor's.
+  final bool visible;
+
+  /// The copy after tags, for text and button blocks.
+  final String? text;
+}
+
+/// Walks a document the way the renderer does and returns every block's
+/// resolved state by id — the pure half of the render contract, which the
+/// shared `paywall-selection-wire.json` fixture is asserted against.
+///
+/// Inside a `repeat: "packages"` card each instance and its descendants are
+/// keyed `<id>@<packageId>`, so the instances do not overwrite each other. A
+/// pinned card whose index the offering does not reach is absent, as it is
+/// from the screen.
+Map<String, RevnixResolvedBlock> revnixResolveBlocks(
+  PaywallBlockDoc doc, {
+  required List<RevnixPaywallPackage> packages,
+  String? selectedPackageId,
+}) {
+  final selected = revnixSelectedPackage(packages, selectedPackageId);
+  final out = <String, RevnixResolvedBlock>{};
+
+  void walk(
+    List<PaywallBlock> blocks,
+    RevnixBlockScope parent,
+    bool parentVisible,
+    String suffix,
+  ) {
+    for (final block in blocks) {
+      if (block is CardBlock && block.repeat == 'packages') {
+        final list = packages.isEmpty ? <RevnixPaywallPackage?>[null] : packages;
+        final visible = parentVisible && revnixBlockVisible(block, parent);
+        for (final each in list) {
+          final scope = parent.enter(each, selected);
+          final key = '$suffix@${each?.packageId ?? ''}';
+          out['${block.id}$key'] = RevnixResolvedBlock(
+            block: block,
+            scope: scope,
+            style: revnixEffectiveStyle(block, scope),
+            visible: visible,
+          );
+          walk(block.children, scope, visible, key);
+        }
+        continue;
+      }
+      if (block is CardBlock &&
+          block.packageIndex != null &&
+          revnixPinnedPackage(block, packages) == null) {
+        continue;
+      }
+      final scope = revnixOwnScope(block, parent, packages, selected);
+      final visible = parentVisible && revnixBlockVisible(block, scope);
+      out['${block.id}$suffix'] = RevnixResolvedBlock(
+        block: block,
+        scope: scope,
+        style: revnixEffectiveStyle(block, scope),
+        visible: visible,
+        text: switch (block) {
+          TextBlock(:final text) => revnixResolveTags(text, scope.package, packages),
+          ButtonBlock(:final label) => revnixResolveTags(label, scope.package, packages),
+          _ => null,
+        },
+      );
+      if (block is CardBlock) walk(block.children, scope, visible, suffix);
+    }
+  }
+
+  walk(doc.blocks, RevnixBlockScope.root(selected), true, '');
+  return out;
 }
 
 // ——— colors ———
@@ -1109,6 +1406,7 @@ class BlockRenderContext {
     required this.doc,
     required this.packages,
     this.selectedPackageId,
+    this.loading = false,
     this.heroImageUrl,
     this.footerTermsUrl,
     this.footerPrivacyUrl,
@@ -1125,8 +1423,15 @@ class BlockRenderContext {
   final List<RevnixPaywallPackage> packages;
 
   /// The package a plan card visually emphasizes, and the one whose tags a
-  /// subtree resolves against outside a `repeat`.
+  /// subtree resolves against outside a `repeat`. See [selectedPackage] for
+  /// the rule when it names nothing on offer.
   final String? selectedPackageId;
+
+  /// The host is mid-purchase (REV-262 §4). Purchase buttons ignore taps and
+  /// show a spinner where their label was; close buttons are unaffected.
+  /// Carried here rather than gated silently by the host, because a tap that
+  /// does nothing with no visible reason reads as a broken button.
+  final bool loading;
 
   /// Fills an image block that publishes no URL of its own.
   final String? heroImageUrl;
@@ -1152,6 +1457,45 @@ class BlockRenderContext {
   /// colour from the design), so this is the only way a host learns that a
   /// paywall is rendering approximately.
   final void Function(String message)? onDiagnostic;
+
+  /// The package the screen treats as selected: [selectedPackageId] when the
+  /// offering carries it, else the first package (REV-262 §1). Root-level
+  /// tags resolve against it, plan cards compare against it, the CTA buys it.
+  RevnixPaywallPackage? get selectedPackage =>
+      revnixSelectedPackage(packages, selectedPackageId);
+}
+
+/// The widest a phone-authored canvas scales to (REV-262 §3). Past this a
+/// tablet or landscape viewport centres the design and the document
+/// background fills the rest, rather than blowing the design up 2.6×.
+const double kRevnixCanvasMaxWidth = 480;
+
+/// Uniform scale for a canvas design at [viewportWidth] logical pixels.
+double revnixCanvasScale(double viewportWidth) {
+  final width = viewportWidth.isFinite ? viewportWidth : kRevnixCanvasWidth;
+  final capped = width < kRevnixCanvasMaxWidth ? width : kRevnixCanvasMaxWidth;
+  return capped / kRevnixCanvasWidth;
+}
+
+/// The canvas's layout height in DESIGN units for a viewport of
+/// [viewportHeight] logical pixels at [scale]: never less than the authored
+/// 852, and enough to fill a taller screen so bottom-anchored groups and
+/// `height: "100%"` cards follow the viewport instead of leaving a band.
+double revnixCanvasDesignHeight(double viewportHeight, double scale) {
+  if (!viewportHeight.isFinite || scale <= 0) return kRevnixCanvasHeight;
+  final needed = viewportHeight / scale;
+  return needed > kRevnixCanvasHeight ? needed : kRevnixCanvasHeight;
+}
+
+/// The decode width for a photo drawn into a box [boxWidth] logical pixels
+/// wide (REV-262 §5): twice the box's physical pixels, so a `cover` crop and
+/// a retina upgrade both stay sharp without decoding a 4000px original for a
+/// 393pt slot. Null when the box is not yet known — the image then decodes
+/// at its own size, as it always did. Flutter's resize never upscales, so a
+/// small original is left alone.
+int? revnixImageCacheWidth(double boxWidth, double devicePixelRatio) {
+  if (!boxWidth.isFinite || boxWidth <= 0 || devicePixelRatio <= 0) return null;
+  return (boxWidth * devicePixelRatio * 2).ceil();
 }
 
 /// Renders a whole block document.
@@ -1173,45 +1517,86 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
     );
     final background = _groundColor(layers.ground, doc);
     final art = _backgroundArt(layers, doc);
+    // Root-level tags resolve against the selected package (REV-262 §2): the
+    // renewal line every template carries — "then {price}/{period_short}" —
+    // sits outside any plan card and must name what the CTA will charge.
     final body = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
-      children: _renderList(doc.blocks, null),
+      children: _renderList(doc.blocks, RevnixBlockScope.root(ctx.selectedPackage)),
     );
+    final close = _fallbackClose(context);
 
     if (doc.layout == 'canvas') {
       return LayoutBuilder(
         builder: (context, constraints) {
-          final width = constraints.maxWidth.isFinite ? constraints.maxWidth : kRevnixCanvasWidth;
-          final scale = width / kRevnixCanvasWidth;
+          final viewportWidth =
+              constraints.maxWidth.isFinite ? constraints.maxWidth : kRevnixCanvasWidth;
+          final scale = revnixCanvasScale(viewportWidth);
+          final designHeight = revnixCanvasDesignHeight(constraints.maxHeight, scale);
+          final scaledWidth = kRevnixCanvasWidth * scale;
+          final scaledHeight = designHeight * scale;
+          final viewportHeight =
+              constraints.maxHeight.isFinite ? constraints.maxHeight : scaledHeight;
+          // Within half a pixel counts as fitting: float noise from the
+          // division above must not turn a design that fills its screen into
+          // one that scrolls a hairline.
+          final fits = scaledHeight <= viewportHeight + 0.5;
+
+          // The design's box: centred when the width cap leaves a margin,
+          // clipped so a stack child hanging off the canvas edge stays inside
+          // it, and as tall as the scaled design — which is what the scroll
+          // view measures when the viewport is shorter.
+          final canvas = SizedBox(
+            width: viewportWidth,
+            height: scaledHeight,
+            child: Stack(
+              clipBehavior: Clip.hardEdge,
+              children: [
+                Positioned(
+                  left: (viewportWidth - scaledWidth) / 2,
+                  top: 0,
+                  width: scaledWidth,
+                  height: scaledHeight,
+                  // OverflowBox lets the design lay out at its authored
+                  // width even when that is wider than the scaled box (a
+                  // 320pt phone), which a plain SizedBox would be clamped to.
+                  child: OverflowBox(
+                    alignment: Alignment.topLeft,
+                    minWidth: kRevnixCanvasWidth,
+                    maxWidth: kRevnixCanvasWidth,
+                    minHeight: designHeight,
+                    maxHeight: designHeight,
+                    child: Transform.scale(
+                      scale: scale,
+                      alignment: Alignment.topLeft,
+                      child: SizedBox(
+                        width: kRevnixCanvasWidth,
+                        height: designHeight,
+                        child: body,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
           return Container(
             // The colour goes on the decoration rather than `color:` —
-            // Container asserts a decoration exists whenever it clips, and a
-            // canvas screen must clip to stay inside its scaled box.
+            // Container asserts a decoration exists whenever it clips.
             decoration: BoxDecoration(color: background),
-            width: width,
-            height: kRevnixCanvasHeight * scale,
+            width: viewportWidth,
+            height: viewportHeight,
             clipBehavior: Clip.hardEdge,
+            // The ground and art fill the whole viewport — around a centred
+            // design on a tablet, and behind a scrolling one — and the close
+            // chip sits outside the scale transform, in unscaled points.
             child: Stack(
               fit: StackFit.expand,
               children: [
                 ...art,
-                Align(
-                  alignment: Alignment.topLeft,
-                  child: Transform.scale(
-                    scale: scale,
-                    alignment: Alignment.topLeft,
-                    child: SizedBox(
-                      width: kRevnixCanvasWidth,
-                      height: kRevnixCanvasHeight,
-                      child: body,
-                    ),
-                  ),
-                ),
-                // Outside the Transform.scale, so the fallback close keeps its
-                // tap size and its distance from the screen edge whatever the
-                // device width does to the design (REV-252).
-                ..._fallbackClose(),
+                _scroller(context, canvas, fits: fits),
+                ...close,
               ],
             ),
           );
@@ -1219,11 +1604,11 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
       );
     }
 
-    final scroller = SingleChildScrollView(
+    final scroller = _scroller(
+      context,
+      body,
       padding: const EdgeInsets.all(20),
-      child: body,
     );
-    final close = _fallbackClose();
     if (art.isEmpty && close.isEmpty) {
       return Container(color: background, child: scroller);
     }
@@ -1238,6 +1623,32 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
     );
   }
 
+  /// The paywall's scroll view (REV-262 §3): no scrollbar, no overscroll
+  /// glow, and no bounce while the content fits. [fits] is passed when the
+  /// caller already knows the answer (the canvas), and scrolling is then
+  /// switched off outright; otherwise [RevnixPaywallScrollPhysics] decides
+  /// from the measured extent.
+  Widget _scroller(
+    BuildContext context,
+    Widget child, {
+    bool? fits,
+    EdgeInsetsGeometry? padding,
+  }) {
+    return ScrollConfiguration(
+      behavior: ScrollConfiguration.of(context).copyWith(
+        scrollbars: false,
+        overscroll: false,
+      ),
+      child: SingleChildScrollView(
+        physics: fits == true
+            ? const NeverScrollableScrollPhysics()
+            : const RevnixPaywallScrollPhysics(),
+        padding: padding,
+        child: child,
+      ),
+    );
+  }
+
   /// The dismiss affordance the renderer supplies itself (REV-252), or an
   /// empty list when it should not draw one.
   ///
@@ -1248,14 +1659,17 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
   ///
   /// Deliberately plain: it is a safety net, not a design element. Tinted from
   /// the screen's own ink rather than a fixed white, so it stays legible on a
-  /// light design as well as a dark one.
-  List<Widget> _fallbackClose() {
+  /// light design as well as a dark one. Sits below the status bar: the
+  /// screen is full-bleed, so without the inset the chip lands under the
+  /// clock (REV-262 §3).
+  List<Widget> _fallbackClose(BuildContext context) {
     final onClose = ctx.onClose;
     if (onClose == null || revnixHasCloseAction(ctx.doc.blocks)) return const [];
     final ink = revnixBlockColor(ctx.doc.textColor, ctx.doc) ?? const Color(0xFFFFFFFF);
+    final safeTop = MediaQuery.maybeViewPaddingOf(context)?.top ?? 0;
     return [
       Positioned(
-        top: 14,
+        top: 14 + safeTop,
         right: 14,
         child: Semantics(
           button: true,
@@ -1272,7 +1686,7 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
                 color: ink.withValues(alpha: 0.14),
               ),
               child: Text(
-                '\u00d7',
+                '×',
                 style: TextStyle(color: ink, fontSize: 17, height: 1),
               ),
             ),
@@ -1308,7 +1722,7 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
 
     final image = layers.image;
     if (image != null) {
-      Widget photo = Image.network(
+      Widget photo = _photo(
         image.url,
         fit: image.fit == RevnixBackgroundFit.contain
             ? BoxFit.contain
@@ -1370,50 +1784,84 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
     return out;
   }
 
-  List<Widget> _renderList(List<PaywallBlock> blocks, RevnixPaywallPackage? pkg) =>
-      [for (final pair in _renderPairs(blocks, pkg)) pair.$2];
+  /// A network photo that fills its box and decodes no larger than twice the
+  /// box's physical pixels (REV-262 §5). The one loader for the screen
+  /// background and for `image` blocks, so both get the same downsampling
+  /// and the same failure behaviour.
+  Widget _photo(
+    String url, {
+    required BoxFit fit,
+    Alignment alignment = Alignment.center,
+    required ImageErrorWidgetBuilder errorBuilder,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) => Image.network(
+        url,
+        fit: fit,
+        alignment: alignment,
+        width: double.infinity,
+        height: double.infinity,
+        cacheWidth: revnixImageCacheWidth(
+          constraints.maxWidth,
+          MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0,
+        ),
+        errorBuilder: errorBuilder,
+      ),
+    );
+  }
 
-  /// Renders each child ONCE and keeps it beside the block it came from, so a
-  /// container can read that block's flex/basis without rendering it twice —
-  /// and so the widget list and the block list never fall out of step when a
-  /// block contributes nothing.
-  List<(PaywallBlock, Widget)> _renderPairs(
+  List<Widget> _renderList(List<PaywallBlock> blocks, RevnixBlockScope scope) =>
+      [for (final pair in _renderPairs(blocks, scope)) pair.$2];
+
+  /// Renders each child ONCE and keeps it beside its EFFECTIVE style — the
+  /// one after `selectedStyle` — so a container reads the flex, basis and
+  /// stack placement the block actually has in this context without
+  /// rendering it twice, and so the widget list and the block list never fall
+  /// out of step when a block contributes nothing or is hidden.
+  List<(BlockStyle?, Widget)> _renderPairs(
     List<PaywallBlock> blocks,
-    RevnixPaywallPackage? pkg,
+    RevnixBlockScope scope,
   ) {
-    final out = <(PaywallBlock, Widget)>[];
+    final out = <(BlockStyle?, Widget)>[];
     for (final block in blocks) {
-      final widget = _render(block, pkg);
-      if (widget != null) out.add((block, widget));
+      // A pinned card resolves its own visibility and style against ITS
+      // package; everything else against the scope it sits in.
+      final own = revnixOwnScope(block, scope, ctx.packages, ctx.selectedPackage);
+      if (!revnixBlockVisible(block, own)) continue;
+      final style = revnixEffectiveStyle(block, own);
+      final widget = _render(block, scope, style);
+      if (widget != null) out.add((style, widget));
     }
     return out;
   }
 
-  /// One block, or null when it contributes nothing.
-  Widget? _render(PaywallBlock block, RevnixPaywallPackage? pkg) {
+  /// One block, or null when it contributes nothing. [style] is the block's
+  /// effective style in [scope]; [scope] is the PARENT's — a package card
+  /// derives its children's scope itself in [_card].
+  Widget? _render(PaywallBlock block, RevnixBlockScope scope, BlockStyle? style) {
     final doc = ctx.doc;
     if (block is TextBlock) {
       return _closeOnTap(
         block.action,
         _styled(
-          block.style,
+          style,
           Text(
-            revnixResolveTags(block.text, pkg, ctx.packages),
-            textAlign: _textAlign(block.style?.align),
-            maxLines: block.style?.nowrap == true ? 1 : null,
-            overflow: block.style?.nowrap == true ? TextOverflow.clip : null,
-            style: _textStyle(block.style),
+            revnixResolveTags(block.text, scope.package, ctx.packages),
+            textAlign: _textAlign(style?.align),
+            maxLines: style?.nowrap == true ? 1 : null,
+            overflow: style?.nowrap == true ? TextOverflow.clip : null,
+            style: _textStyle(style),
           ),
         ),
       );
     }
-    if (block is ImageBlock) return _closeOnTap(block.action, _image(block));
-    if (block is ListBlock) return _list(block);
-    if (block is ProductsBlock) return _products(block);
-    if (block is ButtonBlock) return _button(block, pkg);
-    if (block is LinksBlock) return _links(block);
+    if (block is ImageBlock) return _closeOnTap(block.action, _image(block, style));
+    if (block is ListBlock) return _list(block, style);
+    if (block is ProductsBlock) return _products(block, style);
+    if (block is ButtonBlock) return _button(block, scope, style);
+    if (block is LinksBlock) return _links(block, style);
     if (block is LineBlock) {
-      var fill = revnixBlockFill(block.style?.fill, doc, onDiagnostic: ctx.onDiagnostic);
+      var fill = revnixBlockFill(style?.fill, doc, onDiagnostic: ctx.onDiagnostic);
       if (fill.isNone) {
         fill = RevnixFill(
           color: (revnixBlockColor(doc.textColor, doc) ?? const Color(0xFFFFFFFF))
@@ -1421,9 +1869,9 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
         );
       }
       return _styled(
-        block.style,
+        style,
         SizedBox(
-          height: block.style?.height?.px ?? 1,
+          height: style?.height?.px ?? 1,
           child: RevnixFillBox(fill: fill),
         ),
         skipDecoration: true,
@@ -1432,9 +1880,9 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
     if (block is SpacerBlock) {
       // `flex` grows to push what follows to the bottom.
       if (block.flex == true) return const Spacer();
-      return SizedBox(height: block.style?.height?.px ?? 16);
+      return SizedBox(height: style?.height?.px ?? 16);
     }
-    if (block is CardBlock) return _card(block, pkg);
+    if (block is CardBlock) return _card(block, scope, style);
     // An unknown block type from a newer dashboard: skip it, keep the screen.
     return null;
   }
@@ -1482,10 +1930,11 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
         _ => null,
       };
 
-  Widget _image(ImageBlock block) {
-    final style = block.style;
+  Widget _image(ImageBlock block, BlockStyle? style) {
     // A converted design sizes its own slot; the 160px default is only for a
-    // slot dropped into a flow column, and must not fight it.
+    // slot dropped into a flow column, and must not fight it. An `inset`
+    // image is placed by [_stackChild] with Positioned.fill, so it takes the
+    // whole stack on both axes and needs no size of its own here.
     final sized = style != null &&
         (style.inset == true ||
             style.height != null ||
@@ -1500,11 +1949,9 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
       borderRadius: radius,
       child: url == null
           ? _imageSlot(block)
-          : Image.network(
+          : _photo(
               url,
               fit: block.fit == 'contain' ? BoxFit.contain : BoxFit.cover,
-              width: double.infinity,
-              height: double.infinity,
               // A customer asset that fails to load must not blank the screen.
               errorBuilder: (_, _, _) => _imageSlot(block),
             ),
@@ -1532,9 +1979,9 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
     );
   }
 
-  Widget _list(ListBlock block) {
+  Widget _list(ListBlock block, BlockStyle? style) {
     final doc = ctx.doc;
-    final gap = block.style?.gap ?? 8;
+    final gap = style?.gap ?? 8;
     final iconColor = revnixBlockColor(block.iconColor, doc) ??
         revnixBlockColor(doc.accent, doc) ??
         const Color(0xFFFFFFFF);
@@ -1574,7 +2021,7 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
       );
     }
     return _styled(
-      block.style,
+      style,
       Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: rows),
     );
   }
@@ -1598,9 +2045,8 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
     );
   }
 
-  Widget _button(ButtonBlock block, RevnixPaywallPackage? pkg) {
+  Widget _button(ButtonBlock block, RevnixBlockScope scope, BlockStyle? style) {
     final doc = ctx.doc;
-    final style = block.style;
     // A button the design marks as the close dismisses instead of buying, and
     // takes no accent fill: the CTA must stay the one accented thing on the
     // screen, or a "Not now" competes with "Subscribe" for the eye.
@@ -1625,36 +2071,34 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
     final sized = style?.height?.px != null;
     return _styled(
       style,
-      GestureDetector(
+      RevnixBlockButton(
+        // A "Not now" keeps working mid-purchase: only the buying buttons
+        // wait for the store (REV-262 §4).
+        loading: ctx.loading && !closes,
+        spinnerColor: ink,
+        fill: fill,
+        radius: BorderRadius.circular(style?.radius ?? 12),
+        height: style?.height?.px,
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: sized ? 0 : 15),
         onTap: () {
           if (closes) {
             ctx.onClose?.call();
             return;
           }
-          final id = ctx.selectedPackageId ??
-              (ctx.packages.isEmpty ? null : ctx.packages.first.packageId);
+          final id = ctx.selectedPackage?.packageId;
           if (id != null) ctx.onPurchase(id);
         },
-        child: RevnixFillBox(
-          fill: fill,
-          radius: BorderRadius.circular(style?.radius ?? 12),
-          child: Container(
-            height: style?.height?.px,
-            alignment: Alignment.center,
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: sized ? 0 : 15),
-            child: Text(
-              revnixResolveTags(block.label, pkg, ctx.packages),
-              textAlign: TextAlign.center,
-              style: _textStyle(style, defaultWeight: FontWeight.w800).copyWith(color: ink),
-            ),
-          ),
+        label: Text(
+          revnixResolveTags(block.label, scope.package, ctx.packages),
+          textAlign: TextAlign.center,
+          style: _textStyle(style, defaultWeight: FontWeight.w800).copyWith(color: ink),
         ),
       ),
       skipDecoration: true,
     );
   }
 
-  Widget? _links(LinksBlock block) {
+  Widget? _links(LinksBlock block, BlockStyle? style) {
     // An explicit host handler wins over the config URL — the app knows best
     // how to open its own legal pages; the URL is the no-handler fallback.
     final entries = <(String, VoidCallback?)>[];
@@ -1671,26 +2115,24 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
           onTap: action,
           child: Opacity(
             opacity: 0.65,
-            child: Text(label, style: _textStyle(block.style, defaultSize: 12)),
+            child: Text(label, style: _textStyle(style, defaultSize: 12)),
           ),
         ),
       );
     }
     return _styled(
-      block.style,
+      style,
       Row(mainAxisAlignment: MainAxisAlignment.center, children: children),
       skipDecoration: true,
     );
   }
 
-  Widget _products(ProductsBlock block) {
+  Widget _products(ProductsBlock block, BlockStyle? style) {
     final doc = ctx.doc;
     final shown = ctx.packages;
-    final highlightId = shown.any((p) => p.packageId == ctx.selectedPackageId)
-        ? ctx.selectedPackageId
-        : (shown.isEmpty ? null : shown.first.packageId);
+    final highlightId = ctx.selectedPackage?.packageId;
     final row = block.direction == 'row';
-    final gap = block.style?.gap ?? 8;
+    final gap = style?.gap ?? 8;
     final accent = revnixBlockColor(doc.accent, doc) ?? const Color(0xFF6478FF);
 
     final cards = <Widget>[];
@@ -1751,7 +2193,8 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
       }
       // The whole card is the target, not just its glyphs — a plan row is
       // mostly padding, and tapping beside the price must select. Opaque so
-      // the transparent padding takes the hit too.
+      // the transparent padding takes the hit too. No pressed opacity: the
+      // highlight treatment IS the feedback (REV-262 §4).
       final styled = GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => ctx.onSelect(pkg.packageId),
@@ -1761,7 +2204,7 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
     }
 
     return _styled(
-      block.style,
+      style,
       row
           ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: cards)
           : Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: cards),
@@ -1782,13 +2225,17 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
   /// The container. `layout` maps onto Flutter's own primitives: column →
   /// Column, row → Row, stack → Stack, grid → GridView. Any value this SDK does
   /// not know falls back to a column rather than rendering nothing.
-  Widget? _card(CardBlock block, RevnixPaywallPackage? pkg) {
+  ///
+  /// [scope] is the parent's; [style] the card's effective style in its OWN
+  /// scope (a pinned card's own package decides that — see [revnixOwnScope]).
+  Widget? _card(CardBlock block, RevnixBlockScope scope, BlockStyle? style) {
+    final selected = ctx.selectedPackage;
     if (block.repeat == 'packages') {
       // One designed card, rendered per package. With nothing attached a single
-      // instance still renders, so the design stays visible.
+      // instance still renders, so the design stays visible. Each instance is
+      // its own selected context: the selected one takes `selectedStyle`, and
+      // its descendants see it as selected.
       final list = ctx.packages.isEmpty ? <RevnixPaywallPackage?>[null] : ctx.packages;
-      final selected = ctx.selectedPackageId ??
-          (ctx.packages.isEmpty ? null : ctx.packages.first.packageId);
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
@@ -1796,10 +2243,8 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
           for (final each in list)
             _container(
               block,
-              each,
-              each != null && each.packageId == selected
-                  ? (block.style ?? const BlockStyle()).merging(block.selectedStyle)
-                  : block.style,
+              scope.enter(each, selected),
+              revnixEffectiveStyle(block, scope.enter(each, selected)),
               selects: each?.packageId,
             ),
         ],
@@ -1807,33 +2252,28 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
     }
 
     // A card that names a package the offering does not reach is dropped rather
-    // than rendered with unresolved tags.
-    final index = block.packageIndex;
-    if (index != null && index >= ctx.packages.length) return null;
-    final pinned = index != null ? ctx.packages[index] : null;
-    final ctxPackage = pinned ?? pkg;
+    // than rendered with unresolved tags. That includes a negative index,
+    // which used to throw and take the whole screen with it.
+    final pinned = revnixPinnedPackage(block, ctx.packages);
+    if (block.packageIndex != null && pinned == null) return null;
     // A card pinned to a package doubles as its selection target — that is how
     // hand-styled plan rows (a highlighted annual beside a plain monthly)
-    // become tappable without a products block. It takes `selectedStyle` when
-    // selected for the same reason a repeated card does, or tapping it would
-    // change what the CTA buys with no visible answer. A card that names no
-    // package is decoration and stays inert.
-    final selected = ctx.selectedPackageId ??
-        (ctx.packages.isEmpty ? null : ctx.packages.first.packageId);
-    final style = pinned != null && pinned.packageId == selected
-        ? (block.style ?? const BlockStyle()).merging(block.selectedStyle)
-        : block.style;
-    return _container(block, ctxPackage, style, selects: pinned?.packageId);
+    // become tappable without a products block. Its children inherit its
+    // context, so a tick or a ring inside it answers the selection too. A
+    // card that names no package is decoration, stays inert, and passes the
+    // scope it sits in straight through.
+    final inner = pinned != null ? scope.enter(pinned, selected) : scope;
+    return _container(block, inner, style, selects: pinned?.packageId);
   }
 
   Widget _container(
     CardBlock block,
-    RevnixPaywallPackage? pkg,
+    RevnixBlockScope scope,
     BlockStyle? style, {
     String? selects,
   }) {
-    final gap = block.style?.gap ?? 10;
-    final pairs = _renderPairs(block.children, pkg);
+    final gap = style?.gap ?? 10;
+    final pairs = _renderPairs(block.children, scope);
     final children = [for (final pair in pairs) pair.$2];
 
     Widget body;
@@ -1842,7 +2282,7 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
         body = Stack(
           clipBehavior: Clip.none,
           children: [
-            for (final pair in pairs) _stackChild(pair.$1.style, pair.$2),
+            for (final pair in pairs) _stackChild(pair.$1, pair.$2),
           ],
         );
       case 'grid':
@@ -1858,21 +2298,23 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
         );
       case 'row':
         body = Row(
-          mainAxisAlignment: _mainAxis(block.style?.justify),
-          crossAxisAlignment: _crossAxis(block.style?.items),
+          mainAxisAlignment: _mainAxis(style?.justify),
+          crossAxisAlignment: _crossAxis(style?.items),
           children: _withGaps(pairs, gap, horizontal: true),
         );
       default:
         // column, and anything unrecognized.
         body = Column(
           mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: _mainAxis(block.style?.justify),
-          crossAxisAlignment: _crossAxis(block.style?.items, column: true),
+          mainAxisAlignment: _mainAxis(style?.justify),
+          crossAxisAlignment: _crossAxis(style?.items, column: true),
           children: _withGaps(pairs, gap, horizontal: false),
         );
     }
     final styled = _styled(style, body);
     if (selects == null) return styled;
+    // A selection target gets no pressed opacity: its selectedStyle is the
+    // feedback (REV-262 §4).
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => ctx.onSelect(selects),
@@ -1883,14 +2325,14 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
   /// Inserts the gap and honours each child's flex/basis — a carousel card
   /// sized by basis collapses to nothing without it.
   List<Widget> _withGaps(
-    List<(PaywallBlock, Widget)> pairs,
+    List<(BlockStyle?, Widget)> pairs,
     double gap, {
     required bool horizontal,
   }) {
     final out = <Widget>[];
     for (var i = 0; i < pairs.length; i++) {
       if (i > 0) out.add(horizontal ? SizedBox(width: gap) : SizedBox(height: gap));
-      final style = pairs[i].$1.style;
+      final style = pairs[i].$1;
       final grow = style?.flex;
       final basis = style?.basis;
       var child = pairs[i].$2;
@@ -2128,6 +2570,10 @@ class _GradientBox extends StatelessWidget {
 /// re-authored, and a design that DOES author a close chip never shows two. The
 /// same predicate exists in every Revnix SDK — keep them identical.
 bool revnixHasCloseAction(List<PaywallBlock> blocks) => blocks.any((block) {
+      // A block with `visibility` set is drawn only in one selection state,
+      // so a close authored on it MIGHT not appear (REV-262 §1). Same rule as
+      // the conditional containers below: it does not count.
+      if (block.visibility != null) return false;
       if (block is TextBlock) return block.action == BlockAction.close;
       if (block is ImageBlock) return block.action == BlockAction.close;
       if (block is ButtonBlock) return block.action == BlockAction.close;
@@ -2144,3 +2590,118 @@ bool revnixHasCloseAction(List<PaywallBlock> blocks) => blocks.any((block) {
       }
       return false;
     });
+
+/// A `button` block (REV-262 §4).
+///
+/// Draws at 80% opacity while the finger is down and back to 100% on release;
+/// while [loading] it ignores taps, hides its label and centres a spinner in
+/// [spinnerColor] in its place, keeping its size and fill so the layout does
+/// not jump. Announced as a button, disabled while loading.
+class RevnixBlockButton extends StatefulWidget {
+  const RevnixBlockButton({
+    super.key,
+    required this.onTap,
+    required this.label,
+    required this.fill,
+    required this.spinnerColor,
+    this.radius,
+    this.height,
+    this.padding = EdgeInsets.zero,
+    this.loading = false,
+  });
+
+  final VoidCallback onTap;
+  final Widget label;
+  final RevnixFill fill;
+  final Color spinnerColor;
+  final BorderRadius? radius;
+  final double? height;
+  final EdgeInsetsGeometry padding;
+  final bool loading;
+
+  /// The opacity of a pressed button — the same weight as the dashboard's
+  /// `:active { opacity: .8 }` and UGUI's ColorTint pressed 0.8.
+  static const double pressedOpacity = 0.8;
+
+  @override
+  State<RevnixBlockButton> createState() => _RevnixBlockButtonState();
+}
+
+class _RevnixBlockButtonState extends State<RevnixBlockButton> {
+  bool _pressed = false;
+
+  void _setPressed(bool value) {
+    if (_pressed == value) return;
+    setState(() => _pressed = value);
+  }
+
+  @override
+  void didUpdateWidget(RevnixBlockButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // A press that turned into a purchase must not leave the button dimmed
+    // under its spinner.
+    if (widget.loading && !oldWidget.loading) _pressed = false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final loading = widget.loading;
+    return Semantics(
+      button: true,
+      enabled: !loading,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: loading ? null : (_) => _setPressed(true),
+        onTapUp: (_) => _setPressed(false),
+        onTapCancel: () => _setPressed(false),
+        onTap: loading ? null : widget.onTap,
+        child: Opacity(
+          opacity: _pressed && !loading ? RevnixBlockButton.pressedOpacity : 1,
+          child: RevnixFillBox(
+            fill: widget.fill,
+            radius: widget.radius,
+            child: Container(
+              height: widget.height,
+              alignment: Alignment.center,
+              padding: widget.padding,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  // The label keeps its box while hidden, so the button keeps
+                  // its size; the spinner is centred over that box.
+                  Opacity(opacity: loading ? 0 : 1, child: widget.label),
+                  if (loading)
+                    SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: widget.spinnerColor,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Scroll physics for a paywall (REV-262 §3): the platform's own feel while
+/// the content overflows the viewport, and no drag at all — so no bounce and
+/// no overscroll — while it fits. Layered over the ambient physics, so an iOS
+/// list still bounces at its ends when there IS something to scroll.
+class RevnixPaywallScrollPhysics extends ScrollPhysics {
+  const RevnixPaywallScrollPhysics({super.parent});
+
+  @override
+  RevnixPaywallScrollPhysics applyTo(ScrollPhysics? ancestor) =>
+      RevnixPaywallScrollPhysics(parent: buildParent(ancestor));
+
+  @override
+  bool shouldAcceptUserOffset(ScrollMetrics position) =>
+      position.maxScrollExtent > position.minScrollExtent &&
+      super.shouldAcceptUserOffset(position);
+}

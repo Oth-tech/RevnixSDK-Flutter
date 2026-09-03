@@ -323,24 +323,24 @@ class _RevnixPaywallState extends State<RevnixPaywall> {
   /// classic theme and the `template` layout play no part here.
   Widget _buildBlocks(PaywallBlockDoc doc) {
     final shown = widget.packages;
-    String? fallback;
-    for (final p in shown) {
-      if (p.packageId == widget.config.highlightPackageId) {
-        fallback = p.packageId;
-        break;
-      }
-    }
-    fallback ??= shown.isEmpty ? null : shown.first.packageId;
-    final selectedId = widget.selectedPackageId ??
-        (_internalSelected != null && shown.any((p) => p.packageId == _internalSelected)
-            ? _internalSelected
-            : fallback);
+    // The one selection rule every renderer shares (REV-262 §1): the host's
+    // choice when it names an offered package, else the customer's tap, else
+    // the config highlight, else the first package.
+    final selectedId = revnixResolveSelectedPackageId(
+      shown,
+      hostSelected: widget.selectedPackageId,
+      internalSelected: _internalSelected,
+      highlight: widget.config.highlightPackageId,
+    );
 
     return RevnixPaywallBlockScreen(
       ctx: BlockRenderContext(
         doc: doc,
         packages: shown,
         selectedPackageId: selectedId,
+        // The renderer draws the wait — spinner in place of the label, taps
+        // ignored — rather than the host swallowing the tap silently.
+        loading: widget.loading,
         heroImageUrl: widget.config.heroImageUrl,
         footerTermsUrl: widget.config.footer?.termsUrl,
         footerPrivacyUrl: widget.config.footer?.privacyUrl,
