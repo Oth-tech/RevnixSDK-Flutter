@@ -28,6 +28,7 @@ import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 
 import 'paywall_background.dart';
+import 'paywall_geometry.dart';
 import 'revnix_paywall.dart' show RevnixPaywallPackage;
 
 /// The device screen `canvas` designs are authored against.
@@ -146,6 +147,11 @@ class BlockStyle {
     this.shadow,
     this.blur,
     this.rotate,
+    this.translate,
+    this.clipPath,
+    this.fillSize,
+    this.textWrap,
+    this.filter,
     this.inset,
     this.top,
     this.right,
@@ -225,6 +231,29 @@ class BlockStyle {
   final double? blur;
   final double? rotate;
 
+  /// CSS `translate` ("-50% 0"), resolved against the block's OWN size — how
+  /// the designs centre a badge pinned with `left: 50%`. Drawn.
+  final String? translate;
+
+  /// The four below are DECODED so the renderer can say what it cannot draw.
+  /// Being decoded is what makes each a known limitation instead of a silent
+  /// one: the block keeps its place and its colour, and [onDiagnostic] carries
+  /// the value that went unpainted.
+
+  /// CSS `clip-path` — starbursts and ticket notches. Reported, not drawn.
+  final String? clipPath;
+
+  /// `background-size` for a repeating gradient wash. A tiled fill needs a
+  /// shader this renderer does not build, so the fill paints once. Reported.
+  final String? fillSize;
+
+  /// `text-wrap: balance | pretty`. Flutter exposes no wrapping strategy, so
+  /// the line breaks fall where the engine puts them. Reported.
+  final String? textWrap;
+
+  /// Raw CSS `filter` (soft glows). Reported, not drawn.
+  final String? filter;
+
   /// Placement inside a `stack` container. `inset` fills the stack; the
   /// individual offsets pin an edge. Ignored outside a stack.
   final bool? inset;
@@ -288,6 +317,11 @@ class BlockStyle {
       shadow: other.shadow ?? shadow,
       blur: other.blur ?? blur,
       rotate: other.rotate ?? rotate,
+      translate: other.translate ?? translate,
+      clipPath: other.clipPath ?? clipPath,
+      fillSize: other.fillSize ?? fillSize,
+      textWrap: other.textWrap ?? textWrap,
+      filter: other.filter ?? filter,
       inset: other.inset ?? inset,
       top: other.top ?? top,
       right: other.right ?? right,
@@ -359,6 +393,11 @@ class BlockStyle {
       shadow: s('shadow'),
       blur: d('blur'),
       rotate: d('rotate'),
+      translate: s('translate'),
+      clipPath: s('clipPath'),
+      fillSize: s('fillSize'),
+      textWrap: s('textWrap'),
+      filter: s('filter'),
       inset: b('inset'),
       top: dim('top'),
       right: dim('right'),
@@ -2487,6 +2526,48 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
     if (style.rotate != null) {
       out = Transform.rotate(angle: style.rotate! * 3.1415926535897932 / 180, child: out);
     }
+    // CSS `translate`, resolved against the block's OWN size. It runs after the
+    // margins so it composes with the stack offsets the way the browser does:
+    // `left: 50%` pins the edge to the middle, then this pulls the block back
+    // by half its own width to centre it. A percentage is a
+    // FractionalTranslation (which is defined as a fraction of the child's
+    // size); points are a plain Transform. Neither takes the block out of the
+    // layout, exactly as CSS `translate` does not.
+    final translate = revnixParseTranslate(style.translate);
+    if (translate != null) {
+      if (!translate.isAbsolute) {
+        out = FractionalTranslation(
+          translation: Offset(translate.x.fraction, translate.y.fraction),
+          child: out,
+        );
+      }
+      if (translate.x.points != 0 || translate.y.points != 0) {
+        out = Transform.translate(
+          offset: Offset(translate.x.points, translate.y.points),
+          child: out,
+        );
+      }
+    } else if (style.translate != null && style.translate!.trim().isNotEmpty) {
+      ctx.onDiagnostic?.call('translate not applied: ${style.translate}');
+    }
+    // The three below stay unpainted on Flutter. Each leaves the block its
+    // normal rectangle, its place and its colour — the safe direction — and
+    // says so rather than letting a design look wrong for no stated reason.
+    if (style.clipPath != null && style.clipPath!.trim().isNotEmpty) {
+      ctx.onDiagnostic?.call('clipPath not drawn: ${style.clipPath}');
+    }
+    if (revnixFillSizeTiles(style.fillSize) &&
+        (style.fill?.contains('gradient') ?? false)) {
+      ctx.onDiagnostic?.call('fillSize not tiled: ${style.fillSize}');
+    }
+    if (style.filter != null && style.filter!.trim().isNotEmpty) {
+      ctx.onDiagnostic?.call('filter not drawn: ${style.filter}');
+    }
+    // `textWrap` is deliberately NOT reported, here or on iOS, Android and
+    // Unity. It asks for a balanced ragged edge, so ignoring it changes where a
+    // headline wraps and never what it says — and half the shipped templates
+    // set it, which would put a diagnostic on nearly every render and drown the
+    // fallbacks that do mean something.
     if (style.opacity != null) {
       out = Opacity(opacity: (style.opacity! / 100).clamp(0.0, 1.0), child: out);
     }

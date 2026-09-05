@@ -1,5 +1,29 @@
 ## Unreleased
 
+- **Five style fields the designs use now reach the renderer.** `translate`,
+  `clipPath`, `fillSize`, `textWrap` and `filter` were named by no property on
+  `BlockStyle`, so `fromJson` dropped them before the renderer ever saw them.
+  `translate` is now drawn: 5 of the 25 template categories centre a pinned
+  badge with `left: 50%` plus `translate: "-50% 0"`, and without the second
+  half the chip sat half its own width off centre — on Flutter only, never in
+  the dashboard preview the design was approved in. `clipPath`, `fillSize` and
+  `filter` are decoded and reported through `onDiagnostic` (`clipPath not
+  drawn`, `fillSize not tiled`, `filter not drawn`) rather than silently
+  ignored, so a design that renders approximately says so in your logs.
+  `textWrap` is decoded but not reported: it moves a line break, not the
+  design, and half the gallery sets it.
+- **`logPaywallEvent` — the six paywall interactions** (`selected`,
+  `purchaseStarted`, `purchaseAbandoned`, `purchaseFailed`, `restore`,
+  `error`), i.e. what the customer did BETWEEN the display and the close.
+  `RevnixPaywall` sends all but the purchase outcome, which only your app can
+  see. All six are pure history: over-reporting skews a report, it never
+  grants or revokes access. `logPaywallShown` now resolves with the `viewId` it
+  minted — hold it and pass it to `logPaywallClosed` and `logPaywallEvent` so
+  the whole life of one impression threads together.
+- **The selected plan is drawn from the design.** Every block carries
+  `selectedStyle` and `visibility`, so a plan card can change its fill, border
+  and text when its package is the selected one, and a block can be drawn only
+  while selected (a filled radio dot) or only while not.
 - The native SDKs are git submodules (`ios/revnix_flutter/Revnix` → RevnixSDK-iOS,
   `android/revnix-kotlin` → RevnixSDK-Android) instead of vendored copies,
   which had already drifted from upstream. Clone with
