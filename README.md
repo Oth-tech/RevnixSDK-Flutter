@@ -1,6 +1,6 @@
 # revnix_flutter
 
-Flutter plugin for [Revnix](https://revnix.com), subscriptions and
+Flutter plugin for [Revnix](https://revnix.io), subscriptions and
 entitlements, wrapping the native SDKs rather than reimplementing them.
 
 - **iOS** → [`RevnixSDK-iOS`](https://github.com/Oth-tech/RevnixSDK-iOS) (StoreKit 2)
@@ -149,6 +149,35 @@ internally; `loading: true` turns the CTA into a spinner. The plugin adds no
 `url_launcher` dependency, so a dashboard-configured Terms/Privacy URL is
 handed to your `onOpenUrl` callback to open; an explicit `onTerms`/`onPrivacy`
 handler always wins over the config URL.
+
+### Reporting the whole life of a display
+
+Passing `client:` reports the impression. `RevnixPaywall` also reports the
+close and most interactions; rendering your own paywall, these are yours:
+
+| Call | What it does |
+|---|---|
+| `logPaywallShown(…) → Future<String?>` | The impression beacon, resolving with the `viewId` it minted. |
+| `logPaywallClosed(viewId, …)` | Ends that display. Idempotent per view id, so a retry or a double-dismiss cannot count two. Without it a funnel knows how many saw the paywall, not how many left without buying. |
+| `logPaywallEvent(event, viewId, …)` | One of six interactions — `selected`, `purchaseStarted`, `purchaseAbandoned`, `purchaseFailed`, `restore`, `error` — i.e. what happened BETWEEN the display and the close. |
+
+The purchase **outcome** is always yours, even with the built-in renderer:
+your app performs the `in_app_purchase` call, so only your app sees whether
+the sheet was cancelled or the card was declined.
+
+```dart
+final viewId = await revnix.logPaywallShown(
+  placementKey: 'onboarding', paywallId: paywall.paywallId) ?? '';
+
+// From your own in_app_purchase error handling.
+await revnix.logPaywallEvent(
+  RevnixPaywallEvent.purchaseAbandoned, viewId, productId: productId);
+
+await revnix.logPaywallClosed(viewId, placementKey: 'onboarding');
+```
+
+All six are pure ledger history: over-reporting can skew a report, it can
+never grant or revoke access.
 
 ## Errors
 
