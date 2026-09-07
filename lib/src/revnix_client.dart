@@ -43,12 +43,22 @@ class RevnixClient {
   /// Use a **publishable** key (`rvx_pk_…`). Secret keys must never ship in a
   /// binary, so identify/alias are server-proxied by design and are not
   /// methods here.
+  ///
+  /// [device] overrides individual device facts (REV-268). The native SDK
+  /// detects platform, OS version, app version, locale, currency, model and
+  /// the sandbox flag itself and sends them with every placement resolve, so
+  /// targeting rules ("US storefront", "app version at least 3") can be
+  /// evaluated on the request that serves the paywall; pass only what you
+  /// know better — `{'storefront': 'US'}`, say. Keys: `platform`,
+  /// `osVersion`, `appVersion`, `locale`, `currency`, `storefront`, `model`,
+  /// `sandbox` (bool).
   static Future<RevnixClient> configure({
     required String apiKey,
     required String baseUrl,
     Duration timeout = const Duration(seconds: 10),
     Duration entitlementsTtl = const Duration(seconds: 30),
     Duration offlineMaxCacheAge = const Duration(days: 14),
+    Map<String, Object>? device,
     @visibleForTesting MethodChannel? channel,
   }) async {
     final client = RevnixClient._(channel ?? _defaultChannel);
@@ -58,6 +68,7 @@ class RevnixClient {
       'timeoutMs': timeout.inMilliseconds,
       'entitlementsTtlMs': entitlementsTtl.inMilliseconds,
       'offlineMaxCacheAgeMs': offlineMaxCacheAge.inMilliseconds,
+      'device': ?device,
     });
     _instance = client;
     return client;

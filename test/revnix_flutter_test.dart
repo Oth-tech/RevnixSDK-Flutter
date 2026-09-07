@@ -132,6 +132,28 @@ void main() {
     });
   });
 
+  group('device facts (REV-268)', () {
+    test('overrides ride the configure call and are omitted when absent', () async {
+      mock((call) => null);
+      log.clear();
+      await RevnixClient.configure(
+        apiKey: 'rvx_pk_test_abc',
+        baseUrl: 'https://example.convex.site',
+        channel: channel,
+        device: {'storefront': 'US', 'sandbox': true},
+      );
+      final withDevice = log.single.arguments as Map<Object?, Object?>;
+      expect(withDevice['device'], {'storefront': 'US', 'sandbox': true});
+
+      log.clear();
+      await client();
+      final without = log.single.arguments as Map<Object?, Object?>;
+      // The native side detects the facts itself; Dart only speaks up when
+      // the app knows better, so the key must not be sent as null.
+      expect(without.containsKey('device'), isFalse);
+    });
+  });
+
   group('entitlements', () {
     test('a live snapshot parses with stale false', () async {
       mock((call) => call.method == 'configure' ? null : entitlementsPayload);

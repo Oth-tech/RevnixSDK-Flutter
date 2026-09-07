@@ -181,7 +181,10 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
                     DispatchQueue.main.async {
                         sink?(["op": event.op, "message": event.message])
                     }
-                }
+                },
+                // REV-268: revnix-swift detects the device facts; Dart may
+                // override the ones the app knows better.
+                device: Self.deviceFacts(overrides: args["device"] as? [String: Any])
             ))
         self.client = client
 
@@ -194,6 +197,21 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
     }
 
     // MARK: - Marshalling
+
+    /// Detected facts with the Dart-supplied overrides applied (REV-268).
+    private static func deviceFacts(overrides: [String: Any]?) -> DeviceFacts {
+        var facts = DeviceFacts.detect()
+        guard let overrides else { return facts }
+        if let v = overrides["platform"] as? String { facts.platform = v }
+        if let v = overrides["osVersion"] as? String { facts.osVersion = v }
+        if let v = overrides["appVersion"] as? String { facts.appVersion = v }
+        if let v = overrides["locale"] as? String { facts.locale = v }
+        if let v = overrides["currency"] as? String { facts.currency = v }
+        if let v = overrides["storefront"] as? String { facts.storefront = v }
+        if let v = overrides["model"] as? String { facts.model = v }
+        if let v = overrides["sandbox"] as? Bool { facts.sandbox = v }
+        return facts
+    }
 
     private static func purchaseInput(_ args: [String: Any]) throws
         -> RegisterPurchaseInput

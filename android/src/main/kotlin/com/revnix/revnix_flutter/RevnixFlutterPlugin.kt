@@ -11,6 +11,8 @@ import com.revnix.RevnixConfig
 import com.revnix.RevnixError
 import com.revnix.RevnixPaywallEvent
 import com.revnix.RevnixStore
+import com.revnix.DeviceFacts
+import com.revnix.android.AndroidDeviceFacts
 import com.revnix.android.AndroidStorage
 import com.revnix.android.PlayBillingConnector
 import io.flutter.embedding.engine.plugins.FlutterPlugin
@@ -247,6 +249,10 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                         }
                     }
                 },
+                // REV-268: revnix-kotlin detects the device facts; Dart may
+                // override the ones the app knows better.
+                device = AndroidDeviceFacts.detect(context)
+                    .overriddenBy(deviceOverrides(call.argument<Map<String, Any>>("device"))),
             )
         )
         client = created
@@ -256,6 +262,21 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     }
 
     // MARK: - Marshalling
+
+    /** Dart-supplied device fact overrides (REV-268); null when none. */
+    private fun deviceOverrides(map: Map<String, Any>?): DeviceFacts? {
+        if (map == null) return null
+        return DeviceFacts(
+            platform = map["platform"] as? String,
+            osVersion = map["osVersion"] as? String,
+            appVersion = map["appVersion"] as? String,
+            locale = map["locale"] as? String,
+            currency = map["currency"] as? String,
+            storefront = map["storefront"] as? String,
+            model = map["model"] as? String,
+            sandbox = map["sandbox"] as? Boolean,
+        )
+    }
 
     private fun purchaseInput(call: MethodCall) = RegisterPurchaseInput(
         source = RevnixStore.fromWire(call.argument<String>("source") ?: "google"),

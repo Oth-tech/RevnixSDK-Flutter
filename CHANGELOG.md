@@ -1,5 +1,14 @@
 ## Unreleased
 
+- **Device attribute contract.** The native SDKs now send the device facts —
+  platform, OS version, app version, locale, currency, storefront, model,
+  install date, SDK version, sandbox, first open — with every placement
+  resolve (`X-Revnix-Device`), so targeting rules and audiences can use them
+  from the first launch and the dashboard shows them on the customer as
+  `device.*` attributes. `configure(device: {…})` overrides individual keys.
+  Requires revnix-swift 0.3.0 / revnix-kotlin 0.3.0 (the submodules).
+  (REV-268)
+
 - **Five style fields the designs use now reach the renderer.** `translate`,
   `clipPath`, `fillSize`, `textWrap` and `filter` were named by no property on
   `BlockStyle`, so `fromJson` dropped them before the renderer ever saw them.
