@@ -28,6 +28,7 @@ import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 
 import 'paywall_background.dart';
+import 'paywall_localization.dart';
 import 'paywall_geometry.dart';
 import 'revnix_paywall.dart' show RevnixPaywallPackage;
 
@@ -670,6 +671,7 @@ class PaywallBlockDoc {
     required this.accentInk,
     this.fontFamily,
     required this.blocks,
+    this.localization = const PaywallLocalization(),
   });
 
   final int version;
@@ -690,6 +692,11 @@ class PaywallBlockDoc {
   final String accentInk;
   final String? fontFamily;
   final List<PaywallBlock> blocks;
+
+  /// REV-271: the design's translations. Empty for a paywall published in one
+  /// language, which is every paywall written before this shipped —
+  /// [revnixLocalizeDoc] is then a no-op and the tree renders as authored.
+  final PaywallLocalization localization;
 
   /// Turns the raw `config.blocks` into a document, or null when it is not
   /// one. Never throws — a malformed tree costs the DESIGN, and the caller
@@ -714,6 +721,7 @@ class PaywallBlockDoc {
       accentInk: str(value['accentInk']) ?? '#FFFFFF',
       fontFamily: str(value['fontFamily']),
       blocks: raw.map(_parseBlock).toList(),
+      localization: PaywallLocalization.parse(value),
     );
   }
 

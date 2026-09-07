@@ -24,6 +24,7 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../revnix_client.dart';
 import 'paywall_blocks.dart';
+import 'paywall_localization.dart';
 
 /// One purchasable row. [priceLabel] must come from the store (localized).
 @immutable
@@ -200,6 +201,7 @@ class RevnixPaywall extends StatefulWidget {
     this.paywallId,
     this.disableViewTracking = false,
     this.onDiagnostic,
+    this.locale,
   });
 
   final PaywallConfig config;
@@ -261,6 +263,14 @@ class RevnixPaywall extends StatefulWidget {
   /// swallowed failures and is a separate stream; render diagnostics are
   /// synchronous and belong to the widget that drew them.
   final void Function(RevnixDiagnostic diagnostic)? onDiagnostic;
+
+  /// REV-271: which language a designed paywall draws its copy in. Omit and
+  /// the device's own is used, which is what makes the paywall match the rest
+  /// of the app; pass one when the app has its own in-app language switch, so
+  /// the paywall follows the app rather than the OS. A paywall with no
+  /// translations ignores it, and any string the chosen language does not
+  /// translate falls back to the authored copy rather than rendering blank.
+  final String? locale;
 
   @override
   State<RevnixPaywall> createState() => _RevnixPaywallState();
@@ -464,7 +474,13 @@ class _RevnixPaywallState extends State<RevnixPaywall> {
     // Precedence: a designed paywall (`config.blocks`) wins over the classic
     // layouts below, which stay the fallback for every paywall published
     // before the block builder — so anything already live renders unchanged.
-    final blockDoc = PaywallBlockDoc.parse(config.blocks);
+    // REV-271: the language overlay is applied ONCE, here, so every widget
+    // below reads plain strings and none can forget to localize one. A
+    // paywall with no translations returns itself.
+    final parsed = PaywallBlockDoc.parse(config.blocks);
+    final blockDoc = parsed == null
+        ? null
+        : revnixLocalizeDoc(parsed, widget.locale ?? revnixDeviceLocale());
     if (blockDoc != null) return _buildBlocks(blockDoc);
 
     // Base scheme comes from the dashboard config (mode: dark|light, absent =
