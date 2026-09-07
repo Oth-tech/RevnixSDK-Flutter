@@ -1,6 +1,6 @@
 name: revnix_flutter
 description: "Revnix subscriptions and entitlements for Flutter — offline-resilient entitlement checks, placements, and StoreKit 2 / Play Billing purchase registration."
-version: 0.2.0
+version: 0.3.0
 homepage: https://revnix.io
 repository: https://github.com/Oth-tech/RevnixSDK-Flutter
 
