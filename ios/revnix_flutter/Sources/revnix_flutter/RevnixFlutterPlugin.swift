@@ -18,6 +18,13 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
     private var client: RevnixClient?
     private var observer: Task<Void, Never>?
     private var diagnosticsSink: FlutterEventSink?
+    /// REV-272: implicit-placement triggers. Its own channel rather than a
+    /// second message shape on the diagnostics stream — a paywall to present
+    /// and a swallowed background failure are different subscriptions with
+    /// different lifetimes, and merging them would make Dart filter every
+    /// diagnostic to find a trigger.
+    private var implicitSink: FlutterEventSink?
+    private let implicitStreamHandler = ImplicitStreamHandler()
 
     public static func register(with registrar: FlutterPluginRegistrar) {
         let instance = RevnixFlutterPlugin()
@@ -30,6 +37,33 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
             name: "com.revnix/revnix_flutter/diagnostics",
             binaryMessenger: registrar.messenger())
         events.setStreamHandler(instance)
+
+        // REV-272: implicit-placement triggers.
+        let implicit = FlutterEventChannel(
+            name: "com.revnix/revnix_flutter/implicit",
+            binaryMessenger: registrar.messenger())
+        instance.implicitStreamHandler.onSink = { [weak instance] sink in
+            instance?.implicitSink = sink
+        }
+        implicit.setStreamHandler(instance.implicitStreamHandler)
+    }
+
+    /// A separate `FlutterStreamHandler` because the plugin itself already is
+    /// one (for diagnostics) and a type can only serve one channel.
+    final class ImplicitStreamHandler: NSObject, FlutterStreamHandler {
+        var onSink: ((FlutterEventSink?) -> Void)?
+
+        func onListen(
+            withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink
+        ) -> FlutterError? {
+            onSink?(events)
+            return nil
+        }
+
+        func onCancel(withArguments arguments: Any?) -> FlutterError? {
+            onSink?(nil)
+            return nil
+        }
     }
 
     // MARK: - Diagnostics stream
@@ -133,6 +167,17 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
                         message: args["message"] as? String,
                         eventId: args["eventId"] as? String)
                     result(nil)
+                case "handleDeepLink":
+                    // REV-272: the one implicit moment no SDK can see for
+                    // itself — the URL reaches the host's own entry point.
+                    // Answered immediately rather than awaited: this runs in the
+                    // host's link handler right before it routes, and the
+                    // trigger is two network round trips. Every Revnix telemetry
+                    // call is a beacon; this is one too.
+                    if let raw = args["url"] as? String, let url = URL(string: raw) {
+                        Task { await client.handleDeepLink(url) }
+                    }
+                    result(nil)
                 case "setAttributes":
                     let raw = args["attributes"] as? [String: Any] ?? [:]
                     try await client.setAttributes(Self.jsonValues(raw))
@@ -170,6 +215,18 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
         }
 
         let sink = diagnosticsSink
+        // REV-272: captured weakly-by-closure through a local, the same shape
+        // the diagnostics sink uses — the sink is replaced when Dart
+        // re-subscribes, so read it off the plugin at fire time rather than
+        // snapshotting it here.
+        let implicitTrigger: @Sendable (RevnixImplicitTrigger) -> Void = {
+            [weak self] trigger in
+            let payload: [String: Any?] = [
+                "placement": trigger.placement.rawValue,
+                "resolution": Self.map(trigger.resolution),
+            ]
+            DispatchQueue.main.async { self?.implicitSink?(payload) }
+        }
         let client = RevnixClient(
             RevnixConfig(
                 apiKey: apiKey,
@@ -184,8 +241,22 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
                 },
                 // REV-268: revnix-swift detects the device facts; Dart may
                 // override the ones the app knows better.
-                device: Self.deviceFacts(overrides: args["device"] as? [String: Any])
+                device: Self.deviceFacts(overrides: args["device"] as? [String: Any]),
+                // REV-272: Dart opts in explicitly — the plugin always has a
+                // handler to give, so "is there a listener" cannot be the
+                // signal the way it is in revnix-react.
+                onImplicitPaywall: implicitTrigger,
+                implicitPlacements: args["implicitPlacements"] as? Bool ?? false,
+                sessionTimeout: millis("sessionTimeoutMs", revnixDefaultSessionTimeout)
             ))
+        // REV-272: retire the previous client BEFORE replacing it. Its
+        // didBecomeActive observer lives on NotificationCenter and outlives the
+        // reference, so a re-configure without this leaves two clients watching
+        // the foreground — every return would then mint two session_start
+        // triggers and emit two implicit-paywall events.
+        if let previous = self.client {
+            Task { await previous.stop() }
+        }
         self.client = client
 
         // Transactions that complete outside a Dart-initiated purchase —

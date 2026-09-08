@@ -515,3 +515,60 @@ class RevnixDiagnostic {
         message: map['message'] as String? ?? '',
       );
 }
+
+/// REV-272: which of the six implicit moments fired.
+///
+/// A placement is normally a location the host resolves by name, so every new
+/// place a paywall could appear costs a code change and a store release. These
+/// six are the same in every app and visible to the SDK without the host
+/// saying anything, so an operator can attach a paywall to them from the
+/// dashboard alone.
+enum RevnixImplicitPlacement {
+  appInstall('app_install'),
+  appLaunch('app_launch'),
+  sessionStart('session_start'),
+
+  /// Lowercase, not Superwall's `deepLink_open`: a placement key must match
+  /// `^[a-z0-9][a-z0-9._-]{0,63}$` server-side.
+  deeplinkOpen('deeplink_open'),
+  paywallDecline('paywall_decline'),
+  transactionAbandon('transaction_abandon');
+
+  const RevnixImplicitPlacement(this.key);
+
+  /// The placement key as it appears in the dashboard and on the wire.
+  final String key;
+
+  static RevnixImplicitPlacement? fromKey(String? key) {
+    for (final value in RevnixImplicitPlacement.values) {
+      if (value.key == key) return value;
+    }
+    return null;
+  }
+}
+
+/// REV-272: one implicit moment that resolved to a paywall. Only ever
+/// delivered WITH a paywall — a moment the server answered with none (nothing
+/// attached, or the same paywall the customer is leaving) is reported and then
+/// dropped, since there is nothing to present.
+class RevnixImplicitTrigger {
+  const RevnixImplicitTrigger({
+    required this.placement,
+    required this.resolution,
+  });
+
+  /// Which of the six fired. Null only on a version skew — a native SDK newer
+  /// than this Dart layer reporting a moment it does not know.
+  final RevnixImplicitPlacement? placement;
+
+  /// The resolution, exactly as [RevnixClient.resolvePlacement] would return.
+  final PlacementResolution resolution;
+
+  static RevnixImplicitTrigger fromMap(Map<Object?, Object?> map) =>
+      RevnixImplicitTrigger(
+        placement:
+            RevnixImplicitPlacement.fromKey(map['placement'] as String?),
+        resolution: PlacementResolution.fromMap(
+            (map['resolution'] as Map<Object?, Object?>?) ?? const {}),
+      );
+}

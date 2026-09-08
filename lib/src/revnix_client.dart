@@ -23,6 +23,13 @@ class RevnixClient {
   static const EventChannel _diagnosticsChannel =
       EventChannel('com.revnix/revnix_flutter/diagnostics');
 
+  /// REV-272: implicit-placement triggers. Its own channel rather than a
+  /// second message shape on the diagnostics stream — a paywall to present and
+  /// a swallowed background failure are different subscriptions with different
+  /// lifetimes.
+  static const EventChannel _implicitChannel =
+      EventChannel('com.revnix/revnix_flutter/implicit');
+
   final MethodChannel _channel;
 
   static RevnixClient? _instance;
@@ -52,6 +59,14 @@ class RevnixClient {
   /// know better — `{'storefront': 'US'}`, say. Keys: `platform`,
   /// `osVersion`, `appVersion`, `locale`, `currency`, `storefront`, `model`,
   /// `sandbox` (bool).
+  ///
+  /// [implicitPlacements] (REV-272) turns on the six moments the SDK reports
+  /// on its own — `app_install`, `app_launch`, `session_start`,
+  /// `deeplink_open`, `paywall_decline`, `transaction_abandon`. With it on,
+  /// the native SDK asks `GET /v1/config` once and then fires only for the
+  /// moments this app has configured in the dashboard, delivering each one
+  /// that resolves to a paywall on [implicitPaywalls]. Off by default: without
+  /// a listener there would be nothing to do with the answer.
   static Future<RevnixClient> configure({
     required String apiKey,
     required String baseUrl,
@@ -59,6 +74,8 @@ class RevnixClient {
     Duration entitlementsTtl = const Duration(seconds: 30),
     Duration offlineMaxCacheAge = const Duration(days: 14),
     Map<String, Object>? device,
+    bool implicitPlacements = false,
+    Duration sessionTimeout = const Duration(minutes: 30),
     @visibleForTesting MethodChannel? channel,
   }) async {
     final client = RevnixClient._(channel ?? _defaultChannel);
@@ -69,6 +86,8 @@ class RevnixClient {
       'entitlementsTtlMs': entitlementsTtl.inMilliseconds,
       'offlineMaxCacheAgeMs': offlineMaxCacheAge.inMilliseconds,
       'device': ?device,
+      'implicitPlacements': implicitPlacements,
+      'sessionTimeoutMs': sessionTimeout.inMilliseconds,
     });
     _instance = client;
     return client;
@@ -181,6 +200,11 @@ class RevnixClient {
   /// display's life. Idempotent per view id, exactly like the impression.
   ///
   /// Pass the id [logPaywallShown] resolved with for this display.
+  ///
+  /// A close is a DECLINE. Do not report one for a display that ended in a
+  /// purchase — with implicit placements on, a close is also the
+  /// `paywall_decline` moment, and a win-back offer seconds after a successful
+  /// purchase is the one thing an operator never means.
   Future<void> logPaywallClosed(
     String viewId, {
     String? placementKey,
@@ -254,6 +278,37 @@ class RevnixClient {
       .receiveBroadcastStream()
       .map((event) => RevnixDiagnostic.fromMap(
           (event as Map<Object?, Object?>?) ?? const {}));
+
+  /// REV-272: implicit-placement triggers — one event per moment that
+  /// resolved to a paywall. Present each however your app presents paywalls;
+  /// the SDK deliberately does not present for you, because it does not own
+  /// your `Navigator` and a paywall pushed over a splash route is worse than
+  /// no paywall.
+  ///
+  /// Requires `implicitPlacements: true` in [configure]; the stream stays
+  /// silent otherwise.
+  ///
+  /// ⚠️ Pass `trigger.resolution.placementKey` to [logPaywallShown] for the
+  /// display you present. That is what tells the SDK this display came FROM an
+  /// implicit trigger, and it is the only thing that stops a `paywall_decline`
+  /// paywall from firing `paywall_decline` again when the customer dismisses it
+  /// — a loop with no way out but force-quitting. The server refuses to serve
+  /// back the very same paywall as a backstop, but it cannot see a rule
+  /// pointing at a DIFFERENT paywall that points back.
+  Stream<RevnixImplicitTrigger> get implicitPaywalls => _implicitChannel
+      .receiveBroadcastStream()
+      .map((event) => RevnixImplicitTrigger.fromMap(
+          (event as Map<Object?, Object?>?) ?? const {}));
+
+  /// REV-272: hand the SDK the URL that opened your app, from wherever you
+  /// already receive it (`uni_links`, `go_router`, `AppLinks`).
+  ///
+  /// This is the one implicit moment the SDK cannot see for itself — the URL
+  /// reaches your app's own entry point, and an SDK intercepting it would be
+  /// fighting your router. Does nothing unless `deeplink_open` is configured
+  /// in the dashboard.
+  Future<void> handleDeepLink(String url) =>
+      _invoke<void>('handleDeepLink', {'url': url});
 
   /// Single funnel for every call, so a native failure always arrives as a
   /// typed [RevnixException] rather than a bare PlatformException.
