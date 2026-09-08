@@ -1,6 +1,7 @@
 package com.revnix.revnix_flutter
 
 import android.app.Activity
+import android.app.Application
 import android.content.Context
 import com.revnix.CustomerEntitlements
 import com.revnix.PlacementResolution
@@ -12,7 +13,9 @@ import com.revnix.RevnixError
 import com.revnix.RevnixPaywallEvent
 import com.revnix.RevnixStore
 import com.revnix.DeviceFacts
+import com.revnix.REVNIX_DEFAULT_SESSION_TIMEOUT_MS
 import com.revnix.android.AndroidDeviceFacts
+import com.revnix.android.AndroidLifecycle
 import com.revnix.android.AndroidStorage
 import com.revnix.android.PlayBillingConnector
 import io.flutter.embedding.engine.plugins.FlutterPlugin
@@ -57,6 +60,16 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     private var activity: Activity? = null
     private var diagnosticsSink: EventChannel.EventSink? = null
 
+    /**
+     * REV-272: implicit-placement triggers. Its own channel rather than a
+     * second message shape on the diagnostics stream — a paywall to present
+     * and a swallowed background failure are different subscriptions with
+     * different lifetimes, and merging them would make Dart filter every
+     * diagnostic to find a trigger.
+     */
+    private lateinit var implicitEvents: EventChannel
+    private var implicitSink: EventChannel.EventSink? = null
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
@@ -68,6 +81,21 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             "com.revnix/revnix_flutter/diagnostics",
         )
         events.setStreamHandler(this)
+
+        // REV-272: implicit-placement triggers.
+        implicitEvents = EventChannel(
+            binding.binaryMessenger,
+            "com.revnix/revnix_flutter/implicit",
+        )
+        implicitEvents.setStreamHandler(object : EventChannel.StreamHandler {
+            override fun onListen(arguments: Any?, sink: EventChannel.EventSink?) {
+                implicitSink = sink
+            }
+
+            override fun onCancel(arguments: Any?) {
+                implicitSink = null
+            }
+        })
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
@@ -196,6 +224,17 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                             result.success(null)
                         }
                     }
+                    "handleDeepLink" -> {
+                        // REV-272: the one implicit moment no SDK can see for
+                        // itself — the URL reaches the host's own Activity.
+                        // Answered immediately rather than awaited: this runs
+                        // in the host's link handler right before it routes,
+                        // and the trigger is two network round trips. Every
+                        // Revnix telemetry call is a beacon; this is one too.
+                        val url = call.argument<String>("url")
+                        if (url != null) scope.launch { active.handleDeepLink(url) }
+                        result.success(null)
+                    }
                     "setAttributes" -> {
                         active.setAttributes(
                             call.argument<Map<String, Any?>>("attributes").orEmpty()
@@ -253,8 +292,34 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                 // override the ones the app knows better.
                 device = AndroidDeviceFacts.detect(context)
                     .overriddenBy(deviceOverrides(call.argument<Map<String, Any>>("device"))),
+                // REV-272: Dart opts in explicitly — the plugin always has a
+                // handler to give, so "is there a listener" cannot be the
+                // signal the way it is in revnix-react.
+                onImplicitPaywall = { trigger ->
+                    scope.launch {
+                        withContext(Dispatchers.Main) {
+                            implicitSink?.success(
+                                mapOf(
+                                    "placement" to trigger.placement.key,
+                                    "resolution" to map(trigger.resolution),
+                                )
+                            )
+                        }
+                    }
+                },
+                implicitPlacements = call.argument<Boolean>("implicitPlacements") ?: false,
+                lifecycle = (context.applicationContext as? Application)
+                    ?.let { AndroidLifecycle(it) },
+                sessionTimeoutMs = call.argument<Number>("sessionTimeoutMs")?.toLong()
+                    ?: REVNIX_DEFAULT_SESSION_TIMEOUT_MS,
             )
         )
+        // REV-272: retire the previous client BEFORE replacing it. Its
+        // AndroidLifecycle callbacks are registered on the Application and
+        // outlive the reference, so a re-configure without this leaves two
+        // clients watching the foreground — every return would then mint two
+        // session_start triggers and emit two implicitPaywall events.
+        client?.close()
         client = created
         // Owns connection, purchase replay, acknowledgement, and the queue drain.
         billing = PlayBillingConnector.start(context, created)

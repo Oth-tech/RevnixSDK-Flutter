@@ -179,6 +179,31 @@ await revnix.logPaywallClosed(viewId, placementKey: 'onboarding');
 All six are pure ledger history: over-reporting can skew a report, it can
 never grant or revoke access.
 
+### Implicit placements
+
+Six placements resolve without a `resolvePlacement` call: `app_install`,
+`app_launch`, `session_start`, `deeplink_open`, `paywall_decline` and
+`transaction_abandon`. Opt in with `implicitPlacements: true` (off by default)
+and listen on `implicitPaywalls`; the native SDKs watch the foreground for
+`session_start` and ask `GET /v1/config` once so an app that configured none
+of the six costs one cached request per launch.
+
+```dart
+final revnix = await RevnixClient.configure(
+  apiKey: 'rvx_pk_live_…', baseUrl: 'https://….convex.site',
+  implicitPlacements: true,
+);
+revnix.implicitPaywalls.listen((trigger) => showPaywall(trigger.resolution));
+
+// deeplink_open is the one moment the SDK cannot see itself:
+appLinks.uriLinkStream.listen((uri) => revnix.handleDeepLink(uri.toString()));
+```
+
+Pass `placementKey: trigger.resolution.placementKey` to `RevnixPaywall` —
+that marks the display as implicit and is what stops a `paywall_decline`
+paywall from firing `paywall_decline` again. A close is a decline: never
+report one for a display that ended in a purchase.
+
 ## Errors
 
 Every native failure arrives as a typed `RevnixException` with `isRetryable`
