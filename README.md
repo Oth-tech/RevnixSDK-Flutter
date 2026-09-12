@@ -21,8 +21,8 @@ platform means one more place for it to silently rot. It already happened once:
 the Swift port dropped a TTL bypass and broke post-purchase unlock until a test
 caught it.
 
-So the policy lives in the native SDKs, where it is tested (32 cases in
-RevnixSDK-iOS, 31 in `revnix-core`). This plugin's job is to not lose it in
+So the policy lives in the native SDKs, where it is tested (in
+RevnixSDK-iOS and `revnix-core`). This plugin's job is to not lose it in
 translation.
 
 ## Quick start
@@ -39,7 +39,8 @@ final revnix = await RevnixClient.configure(
 await revnix.retryPendingPurchases();
 await revnix.registerInstall(platform: 'flutter');
 
-// Gate. Never throws; unknown or unreachable means locked.
+// Gate. Never throws; a transient failure answers from the cache; a deliberate
+// rejection, unknown entitlement, or unreachable with nothing cached, means locked.
 if (await revnix.isEntitled('pro')) {
   // …
 }
@@ -223,18 +224,21 @@ try {
 
 The retryable/deliberate split is the contract: a transient failure serves the
 cache, a deliberate rejection must surface, or there is no kill switch.
-`isEntitled` is the exception; it never throws and resolves to `false`, so
-gates fail closed.
+`isEntitled` is the exception; it never throws. A transient failure answers
+from the offline cache; a deliberate rejection, or a failure with nothing
+cached, resolves to `false`, so gates fail closed and a revoked key still
+locks out a cached snapshot.
 
 ## Status
 
 **Builds; not published.** The plugin compiles and runs end to end on both
 platforms; the native SDKs come in as git submodules (see the note at the
 top), so it does not depend on unpublished CocoaPods/Maven artifacts. The Dart layer is
-complete and tested (`flutter test`, 29 tests covering error rehydration, the
-`stale` flag, gate fail-closed behaviour, and wire marshalling).
+complete and tested (`flutter test`, 195 tests covering error rehydration, the
+`stale` flag, gate fail-closed behaviour, wire marshalling, implicit placements
+and the paywall renderer).
 
-What remains is distribution: `revnix_flutter` 0.2.0 is not on pub.dev, so it
+What remains is distribution: `revnix_flutter` 0.3.0 is not on pub.dev, so it
 can only be consumed as a **path dependency** today, from a checkout cloned
 with `--recurse-submodules`. A pubspec `git:` dependency does not work: pub
 does not fetch submodules, so the native sources would be missing. The pub.dev
