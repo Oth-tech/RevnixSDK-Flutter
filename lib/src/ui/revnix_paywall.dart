@@ -397,6 +397,15 @@ class _RevnixPaywallState extends State<RevnixPaywall> {
   /// Every CTA path routes through here, so the start report can never be
   /// wired on one render path and forgotten on the other.
   void _purchase(String packageId) {
+    if (widget.placementKey == revnixPreviewPlacementKey) {
+      showDialog<void>(
+        context: context,
+        builder: (_) => const AlertDialog(
+          content: Text('Purchases are disabled in preview.'),
+        ),
+      );
+      return;
+    }
     _purchaseAttempts += 1;
     _report(
       RevnixPaywallEvent.purchaseStarted,

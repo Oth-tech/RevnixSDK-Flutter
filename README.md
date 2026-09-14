@@ -205,6 +205,14 @@ that marks the display as implicit and is what stops a `paywall_decline`
 paywall from firing `paywall_decline` again. A close is a decline: never
 report one for a display that ended in a purchase.
 
+The dashboard QR/link preview (`<scheme>://revnix-preview?revnix_preview=…`)
+arrives the same way — hand the URL to `handleDeepLink` and it comes back on
+`implicitPaywalls` like any other trigger, detectable by
+`resolution.placementKey == revnixPreviewPlacementKey`. `RevnixPaywall`
+already refuses to call `onPurchase` for that placement key, showing a
+"Purchases are disabled in preview." dialog instead;
+a custom UI rendering the preview itself must add the same check.
+
 ## Errors
 
 Every native failure arrives as a typed `RevnixException` with `isRetryable`
