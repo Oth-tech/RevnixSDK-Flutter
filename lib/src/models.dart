@@ -469,6 +469,7 @@ class PlacementResolution {
     required this.offering,
     this.paywall,
     this.experiment,
+    this.preview = false,
   });
 
   final String status;
@@ -487,6 +488,11 @@ class PlacementResolution {
   /// servers omit the key entirely; both parse to null.
   final PlacementExperiment? experiment;
 
+  /// True only on a dashboard QR/link preview resolution, never on a real
+  /// resolve. A preview may carry [revision] 0 and an empty [offering] — the
+  /// preview does not tie to a published catalog revision.
+  final bool preview;
+
   static PlacementResolution fromMap(Map<Object?, Object?> map) {
     final paywall = map['paywall'] as Map<Object?, Object?>?;
     final experiment = map['experiment'] as Map<Object?, Object?>?;
@@ -499,6 +505,7 @@ class PlacementResolution {
       paywall: paywall == null ? null : PlacementPaywall.fromMap(paywall),
       experiment:
           experiment == null ? null : PlacementExperiment.fromMap(experiment),
+      preview: map['preview'] == true,
     );
   }
 }
@@ -546,6 +553,12 @@ enum RevnixImplicitPlacement {
     return null;
   }
 }
+
+/// The placementKey a dashboard QR/link preview resolves under
+/// (`<scheme>://revnix-preview?revnix_preview=<token>`, forwarded to
+/// [RevnixClient.implicitPaywalls] by the native SDK). Not one of the six
+/// [RevnixImplicitPlacement] keys, and never sent to the triggered ledger.
+const String revnixPreviewPlacementKey = 'revnix_preview';
 
 /// REV-272: one implicit moment that resolved to a paywall. Only ever
 /// delivered WITH a paywall — a moment the server answered with none (nothing

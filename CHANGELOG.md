@@ -1,5 +1,13 @@
 ## Unreleased
 
+- **On-device QR paywall preview.** `PlacementResolution.preview` and
+  `revnixPreviewPlacementKey` decode a dashboard QR/link preview trigger, and
+  `RevnixPaywall` refuses to purchase for that placement key. Needs the
+  revnix-swift / revnix-kotlin submodule pins that recognize the preview deep
+  link and forward it on `implicitPaywalls` — inert here until those land
+  (the plugin bridges must then also forward `preview`; until then detect a
+  preview by `placementKey`).
+
 - **Device attribute contract.** The native SDKs now send the device facts —
   platform, OS version, app version, locale, currency, storefront, model,
   install date, SDK version, sandbox, first open — with every placement
