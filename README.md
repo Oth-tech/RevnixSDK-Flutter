@@ -200,6 +200,14 @@ revnix.implicitPaywalls.listen((trigger) => showPaywall(trigger.resolution));
 appLinks.uriLinkStream.listen((uri) => revnix.handleDeepLink(uri.toString()));
 ```
 
+With app_links 6 or later, `uriLinkStream` delivers the link that launched
+the app as its first event and every link after it, and does not replay it
+on a hot restart or a second subscription — subscribe once at startup and
+do not also call `getInitialLink()`; it is the same cold-start link and
+would count twice. On uni_links or app_links 5 and earlier the stream
+carries only links that arrive while running, so also hand over
+`getInitialLink()` once at startup.
+
 Pass `placementKey: trigger.resolution.placementKey` to `RevnixPaywall` —
 that marks the display as implicit and is what stops a `paywall_decline`
 paywall from firing `paywall_decline` again. A close is a decline: never
