@@ -25,6 +25,9 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
     /// diagnostic to find a trigger.
     private var implicitSink: FlutterEventSink?
     private let implicitStreamHandler = ImplicitStreamHandler()
+    private var deferredDeepLinkSink: FlutterEventSink?
+    private let deferredDeepLinkStreamHandler = ImplicitStreamHandler()
+    private var pendingDeferredDeepLink: [String: Any?]?
 
     public static func register(with registrar: FlutterPluginRegistrar) {
         let instance = RevnixFlutterPlugin()
@@ -46,6 +49,19 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
             instance?.implicitSink = sink
         }
         implicit.setStreamHandler(instance.implicitStreamHandler)
+
+        let deferredDeepLink = FlutterEventChannel(
+            name: "com.revnix/revnix_flutter/deferred_deep_link",
+            binaryMessenger: registrar.messenger())
+        instance.deferredDeepLinkStreamHandler.onSink = { [weak instance] sink in
+            guard let instance else { return }
+            instance.deferredDeepLinkSink = sink
+            if let sink, let pending = instance.pendingDeferredDeepLink {
+                instance.pendingDeferredDeepLink = nil
+                sink(pending)
+            }
+        }
+        deferredDeepLink.setStreamHandler(instance.deferredDeepLinkStreamHandler)
     }
 
     /// A separate `FlutterStreamHandler` because the plugin itself already is
@@ -178,6 +194,8 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
                         Task { await client.handleDeepLink(url) }
                     }
                     result(nil)
+                case "handleInstallReferrer":
+                    result(nil)
                 case "setAttributes":
                     let raw = args["attributes"] as? [String: Any] ?? [:]
                     try await client.setAttributes(Self.jsonValues(raw))
@@ -227,6 +245,21 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
             ]
             DispatchQueue.main.async { self?.implicitSink?(payload) }
         }
+        let deferredDeepLink: @Sendable (URL, DeferredDeepLinkMatch) -> Void = {
+            [weak self] url, match in
+            let payload: [String: Any?] = [
+                "url": url.absoluteString,
+                "match": match.rawValue,
+            ]
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if let sink = self.deferredDeepLinkSink {
+                    sink(payload)
+                } else {
+                    self.pendingDeferredDeepLink = payload
+                }
+            }
+        }
         let client = RevnixClient(
             RevnixConfig(
                 apiKey: apiKey,
@@ -247,6 +280,7 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
                 // signal the way it is in revnix-react.
                 onImplicitPaywall: implicitTrigger,
                 implicitPlacements: args["implicitPlacements"] as? Bool ?? false,
+                onDeferredDeepLink: deferredDeepLink,
                 sessionTimeout: millis("sessionTimeoutMs", revnixDefaultSessionTimeout)
             ))
         // REV-272: retire the previous client BEFORE replacing it. Its

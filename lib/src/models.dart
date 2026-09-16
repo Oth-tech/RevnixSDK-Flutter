@@ -554,6 +554,20 @@ enum RevnixImplicitPlacement {
   }
 }
 
+/// REV-299: how confidently the server matched a deferred deep link to this
+/// install. iOS never reports [exact] — there is no install-time signal that
+/// certain, only fingerprint matching against a click seen shortly before.
+enum DeferredDeepLinkMatch {
+  exact,
+  probabilistic;
+
+  static DeferredDeepLinkMatch? fromWire(String? value) => switch (value) {
+        'exact' => exact,
+        'probabilistic' => probabilistic,
+        _ => null,
+      };
+}
+
 /// The placementKey a dashboard QR/link preview resolves under
 /// (`<scheme>://revnix-preview?revnix_preview=<token>`, forwarded to
 /// [RevnixClient.implicitPaywalls] by the native SDK). Not one of the six

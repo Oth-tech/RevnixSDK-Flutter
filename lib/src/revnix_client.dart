@@ -30,6 +30,9 @@ class RevnixClient {
   static const EventChannel _implicitChannel =
       EventChannel('com.revnix/revnix_flutter/implicit');
 
+  static const EventChannel _deferredDeepLinkChannel =
+      EventChannel('com.revnix/revnix_flutter/deferred_deep_link');
+
   final MethodChannel _channel;
 
   static RevnixClient? _instance;
@@ -309,6 +312,46 @@ class RevnixClient {
   /// in the dashboard.
   Future<void> handleDeepLink(String url) =>
       _invoke<void>('handleDeepLink', {'url': url});
+
+  /// REV-299: the link the customer clicked before they had the app, echoed
+  /// back by the native SDK from the `registerInstall` response at most once
+  /// per install. An event that arrives before you listen is held natively
+  /// and delivered to your first listener, so subscribing any time after
+  /// [configure] still sees it.
+  ///
+  /// A message whose `match` this Dart layer does not know (a native SDK
+  /// newer than this package) or whose `url` is missing or empty is dropped
+  /// rather than delivered malformed.
+  ///
+  /// A single broadcast stream shared by every listener: `EventChannel`
+  /// tears down the native side's handler on the FIRST cancel, so a second
+  /// `.listen()` (or a one-shot `.first`) on a fresh
+  /// `receiveBroadcastStream()` would silently kill an earlier subscriber
+  /// and — worse — lose the at-most-once event for good.
+  Stream<(String url, DeferredDeepLinkMatch match)> get onDeferredDeepLink =>
+      _deferredDeepLink;
+
+  late final Stream<(String url, DeferredDeepLinkMatch match)>
+      _deferredDeepLink = _deferredDeepLinkChannel
+          .receiveBroadcastStream()
+          .map((event) {
+            final map = (event as Map<Object?, Object?>?) ?? const {};
+            final url = map['url'] as String?;
+            final match =
+                DeferredDeepLinkMatch.fromWire(map['match'] as String?);
+            if (url == null || url.isEmpty || match == null) return null;
+            return (url, match);
+          })
+          .where((event) => event != null)
+          .cast<(String, DeferredDeepLinkMatch)>()
+          .asBroadcastStream();
+
+  /// REV-299: Android only. Hand the raw Play Install Referrer string to the
+  /// native SDK (read it with an install-referrer plugin of your choice —
+  /// this method does not read it for you). A no-op on iOS, which has no
+  /// install referrer.
+  Future<void> handleInstallReferrer(String referrer) =>
+      _invoke<void>('handleInstallReferrer', {'referrer': referrer});
 
   /// Single funnel for every call, so a native failure always arrives as a
   /// typed [RevnixException] rather than a bare PlatformException.
