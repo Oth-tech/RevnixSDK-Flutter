@@ -1,5 +1,12 @@
 ## Unreleased
 
+- **`onDeferredDeepLink` / `handleInstallReferrer`.** The link a customer
+  clicked before installing, echoed once per install through the
+  `onDeferredDeepLink` stream — exact on Android (from the install
+  referrer), probabilistic on iOS (same-network click within the last hour).
+  `handleInstallReferrer(referrer)` hands the raw Play Install Referrer
+  string to the native Android SDK; a no-op on iOS. (REV-299)
+
 - **On-device QR paywall preview.** `PlacementResolution.preview` and
   `revnixPreviewPlacementKey` decode a dashboard QR/link preview trigger, and
   `RevnixPaywall` refuses to purchase for that placement key. Needs the

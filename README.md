@@ -37,7 +37,7 @@ final revnix = await RevnixClient.configure(
 
 // Safe on every launch; the server dedupes on the purchase key.
 await revnix.retryPendingPurchases();
-await revnix.registerInstall(platform: 'flutter');
+await revnix.registerInstall();
 
 // Gate. Never throws; a transient failure answers from the cache; a deliberate
 // rejection, unknown entitlement, or unreachable with nothing cached, means locked.
@@ -220,6 +220,25 @@ arrives the same way — hand the URL to `handleDeepLink` and it comes back on
 already refuses to call `onPurchase` for that placement key, showing a
 "Purchases are disabled in preview." dialog instead;
 a custom UI rendering the preview itself must add the same check.
+
+### Deferred deep links
+
+The link a customer clicked before they had the app, echoed back once per
+install. Unlike the Unity and Capacitor SDKs, Flutter never calls
+`registerInstall` on its own — call it yourself after `configure()`, as in
+the quick start above, or the iOS side of this event never fires:
+
+```dart
+revnix.onDeferredDeepLink.listen((event) {
+  final (url, match) = event;
+  route(url); // match is DeferredDeepLinkMatch.exact or .probabilistic
+});
+
+// Android only, and only after configure() — the Android side rejects the
+// call otherwise. Hand the raw referrer to the SDK from whichever
+// install-referrer plugin you already use. No-op on iOS.
+await revnix.handleInstallReferrer(referrer);
+```
 
 ## Errors
 

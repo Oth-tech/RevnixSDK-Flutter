@@ -34,7 +34,7 @@ class _ExampleAppState extends State<ExampleApp> {
       // Drain anything that failed to register while offline, then report the
       // install. Both are safe to call on every launch.
       await revnix.retryPendingPurchases();
-      await revnix.registerInstall(platform: 'flutter');
+      await revnix.registerInstall();
 
       final id = await revnix.customerId();
 

@@ -70,6 +70,11 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     private lateinit var implicitEvents: EventChannel
     private var implicitSink: EventChannel.EventSink? = null
 
+    private lateinit var deferredDeepLinkEvents: EventChannel
+    private var deferredDeepLinkSink: EventChannel.EventSink? = null
+
+    private var pendingDeferredDeepLink: Map<String, String>? = null
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
@@ -94,6 +99,24 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
 
             override fun onCancel(arguments: Any?) {
                 implicitSink = null
+            }
+        })
+
+        deferredDeepLinkEvents = EventChannel(
+            binding.binaryMessenger,
+            "com.revnix/revnix_flutter/deferred_deep_link",
+        )
+        deferredDeepLinkEvents.setStreamHandler(object : EventChannel.StreamHandler {
+            override fun onListen(arguments: Any?, sink: EventChannel.EventSink?) {
+                deferredDeepLinkSink = sink
+                pendingDeferredDeepLink?.let { pending ->
+                    pendingDeferredDeepLink = null
+                    sink?.success(pending)
+                }
+            }
+
+            override fun onCancel(arguments: Any?) {
+                deferredDeepLinkSink = null
             }
         })
     }
@@ -235,6 +258,11 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                         if (url != null) scope.launch { active.handleDeepLink(url) }
                         result.success(null)
                     }
+                    "handleInstallReferrer" -> {
+                        val referrer = call.argument<String>("referrer")
+                        if (referrer != null) active.handleInstallReferrer(referrer)
+                        result.success(null)
+                    }
                     "setAttributes" -> {
                         active.setAttributes(
                             call.argument<Map<String, Any?>>("attributes").orEmpty()
@@ -308,6 +336,19 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                     }
                 },
                 implicitPlacements = call.argument<Boolean>("implicitPlacements") ?: false,
+                onDeferredDeepLink = { url, match ->
+                    scope.launch {
+                        withContext(Dispatchers.Main) {
+                            val payload = mapOf("url" to url, "match" to match.name.lowercase())
+                            val sink = deferredDeepLinkSink
+                            if (sink != null) {
+                                sink.success(payload)
+                            } else {
+                                pendingDeferredDeepLink = payload
+                            }
+                        }
+                    }
+                },
                 lifecycle = (context.applicationContext as? Application)
                     ?.let { AndroidLifecycle(it) },
                 sessionTimeoutMs = call.argument<Number>("sessionTimeoutMs")?.toLong()
