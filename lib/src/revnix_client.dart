@@ -313,6 +313,26 @@ class RevnixClient {
   Future<void> handleDeepLink(String url) =>
       _invoke<void>('handleDeepLink', {'url': url});
 
+  /// Unwraps a link an email service provider (Mailchimp, SendGrid, …)
+  /// wrapped in its own click-tracking domain, e.g.
+  /// `https://click.mailchimp.com/track/abc` becomes
+  /// `com.voigu.app://promo?utm_source=email&utm_campaign=summer50`. Route on
+  /// the returned URL and pass it to [handleDeepLink]; never throws, and any
+  /// failure hands the input `url` straight back.
+  Future<String> resolveDeepLink(String url) async {
+    if (url.isEmpty) return url;
+    try {
+      final resolved = await _invoke<String>('resolveDeepLink', {'url': url});
+      return resolved == null || resolved.isEmpty ? url : resolved;
+    } on RevnixException {
+      return url;
+    } on PlatformException {
+      return url;
+    } on MissingPluginException {
+      return url;
+    }
+  }
+
   /// REV-299: the link the customer clicked before they had the app, echoed
   /// back by the native SDK from the `registerInstall` response at most once
   /// per install. An event that arrives before you listen is held natively
