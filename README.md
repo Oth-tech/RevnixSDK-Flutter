@@ -249,6 +249,15 @@ route(resolved);
 await revnix.handleDeepLink(resolved);
 ```
 
+The most recent link the customer clicked, read straight from the native
+SDK's own record rather than a stream. Never throws; null if nothing has
+been recorded yet:
+
+```dart
+final last = await revnix.getLastDeepLink();
+if (last != null) route(last.url);
+```
+
 ## Errors
 
 Every native failure arrives as a typed `RevnixException` with `isRetryable`

@@ -574,6 +574,22 @@ enum DeferredDeepLinkMatch {
 /// [RevnixImplicitPlacement] keys, and never sent to the triggered ledger.
 const String revnixPreviewPlacementKey = 'revnix_preview';
 
+/// The link the customer clicked most recently, as recorded by the native
+/// SDK's own deep-link handling.
+class LastDeepLink {
+  const LastDeepLink({required this.url, required this.receivedAt});
+
+  final String url;
+  final DateTime receivedAt;
+
+  static LastDeepLink fromMap(Map<Object?, Object?> map) => LastDeepLink(
+        url: map['url'] as String? ?? '',
+        receivedAt: DateTime.fromMillisecondsSinceEpoch(
+          map['receivedAt'] as int? ?? 0,
+        ),
+      );
+}
+
 /// REV-272: one implicit moment that resolved to a paywall. Only ever
 /// delivered WITH a paywall — a moment the server answered with none (nothing
 /// attached, or the same paywall the customer is leaving) is reported and then

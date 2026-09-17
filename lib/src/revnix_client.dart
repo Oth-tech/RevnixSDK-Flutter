@@ -333,6 +333,26 @@ class RevnixClient {
     }
   }
 
+  /// The link the customer clicked most recently, straight from the native
+  /// SDK's own deep-link handling — a point-in-time read, not a stream. Never
+  /// throws: any platform error returns null.
+  Future<LastDeepLink?> getLastDeepLink() async {
+    try {
+      final map =
+          await _invoke<Map<Object?, Object?>>('getLastDeepLink');
+      final url = map?['url'];
+      return map == null || url is! String || url.isEmpty
+          ? null
+          : LastDeepLink.fromMap(map);
+    } on RevnixException {
+      return null;
+    } on PlatformException {
+      return null;
+    } on MissingPluginException {
+      return null;
+    }
+  }
+
   /// REV-299: the link the customer clicked before they had the app, echoed
   /// back by the native SDK from the `registerInstall` response at most once
   /// per install. An event that arrives before you listen is held natively

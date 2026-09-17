@@ -1,5 +1,9 @@
 ## Unreleased
 
+- **`getLastDeepLink`.** Reads the link the customer clicked most recently,
+  straight from the native SDK's own deep-link handling, without waiting on
+  a stream. Never throws; returns null when nothing has been recorded yet.
+
 - **`resolveDeepLink`.** Unwraps a link an email service provider (Mailchimp,
   SendGrid, ...) wrapped in its own click-tracking domain, e.g.
   `https://click.mailchimp.com/track/abc` becomes

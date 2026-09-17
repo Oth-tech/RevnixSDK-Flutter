@@ -262,6 +262,16 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                         val url = call.argument<String>("url")
                         result.success(if (url != null) active.resolveDeepLink(url) else "")
                     }
+                    "getLastDeepLink" -> {
+                        val last = active.getLastDeepLink()
+                        result.success(
+                            if (last != null) {
+                                mapOf("url" to last.url, "receivedAt" to last.receivedAt)
+                            } else {
+                                null
+                            }
+                        )
+                    }
                     "handleInstallReferrer" -> {
                         val referrer = call.argument<String>("referrer")
                         if (referrer != null) active.handleInstallReferrer(referrer)
