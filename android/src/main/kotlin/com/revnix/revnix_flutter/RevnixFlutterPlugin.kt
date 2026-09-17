@@ -258,6 +258,10 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                         if (url != null) scope.launch { active.handleDeepLink(url) }
                         result.success(null)
                     }
+                    "resolveDeepLink" -> {
+                        val url = call.argument<String>("url")
+                        result.success(if (url != null) active.resolveDeepLink(url) else "")
+                    }
                     "handleInstallReferrer" -> {
                         val referrer = call.argument<String>("referrer")
                         if (referrer != null) active.handleInstallReferrer(referrer)

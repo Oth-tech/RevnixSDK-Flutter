@@ -1,5 +1,12 @@
 ## Unreleased
 
+- **`resolveDeepLink`.** Unwraps a link an email service provider (Mailchimp,
+  SendGrid, ...) wrapped in its own click-tracking domain, e.g.
+  `https://click.mailchimp.com/track/abc` becomes
+  `com.voigu.app://promo?utm_source=email&utm_campaign=summer50`. Route on
+  the result and pass it to `handleDeepLink`; never throws, and a failure
+  hands the input `url` back unchanged. (REV-299)
+
 - **`onDeferredDeepLink` / `handleInstallReferrer`.** The link a customer
   clicked before installing, echoed once per install through the
   `onDeferredDeepLink` stream — exact on Android (from the install

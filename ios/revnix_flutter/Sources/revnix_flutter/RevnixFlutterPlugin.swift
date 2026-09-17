@@ -194,6 +194,13 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
                         Task { await client.handleDeepLink(url) }
                     }
                     result(nil)
+                case "resolveDeepLink":
+                    guard let raw = args["url"] as? String, let url = URL(string: raw) else {
+                        result(args["url"] as? String ?? "")
+                        return
+                    }
+                    let resolved = await client.resolveDeepLink(url)
+                    result(resolved.absoluteString)
                 case "handleInstallReferrer":
                     result(nil)
                 case "setAttributes":
