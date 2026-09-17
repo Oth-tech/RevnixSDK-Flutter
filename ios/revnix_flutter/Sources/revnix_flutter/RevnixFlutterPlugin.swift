@@ -201,6 +201,15 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
                     }
                     let resolved = await client.resolveDeepLink(url)
                     result(resolved.absoluteString)
+                case "getLastDeepLink":
+                    if let last = await client.lastDeepLink() {
+                        result([
+                            "url": last.url.absoluteString,
+                            "receivedAt": Int(last.receivedAt.timeIntervalSince1970 * 1000),
+                        ])
+                    } else {
+                        result(nil)
+                    }
                 case "handleInstallReferrer":
                     result(nil)
                 case "setAttributes":
