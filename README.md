@@ -240,6 +240,15 @@ revnix.onDeferredDeepLink.listen((event) {
 await revnix.handleInstallReferrer(referrer);
 ```
 
+Unwrap a click-tracking link from an email service provider before routing
+on it, from the same entry point:
+
+```dart
+final resolved = await revnix.resolveDeepLink(rawUrl);
+route(resolved);
+await revnix.handleDeepLink(resolved);
+```
+
 ## Errors
 
 Every native failure arrives as a typed `RevnixException` with `isRetryable`
