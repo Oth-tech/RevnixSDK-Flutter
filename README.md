@@ -287,7 +287,7 @@ locks out a cached snapshot.
 **Builds; not published.** The plugin compiles and runs end to end on both
 platforms; the native SDKs come in as git submodules (see the note at the
 top), so it does not depend on unpublished CocoaPods/Maven artifacts. The Dart layer is
-complete and tested (`flutter test`, 195 tests covering error rehydration, the
+complete and tested (`flutter test`, covering error rehydration, the
 `stale` flag, gate fail-closed behaviour, wire marshalling, implicit placements
 and the paywall renderer).
 
