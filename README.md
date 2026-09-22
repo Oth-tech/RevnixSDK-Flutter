@@ -234,9 +234,10 @@ revnix.onDeferredDeepLink.listen((event) {
   route(url); // match is DeferredDeepLinkMatch.exact or .probabilistic
 });
 
-// Android only, and only after configure() — the Android side rejects the
-// call otherwise. Hand the raw referrer to the SDK from whichever
-// install-referrer plugin you already use. No-op on iOS.
+// Android now reads the Play install referrer itself during configure() —
+// you don't need to call this. It still exists for a host that reads the
+// referrer some other way; a second call just double-reports, which the
+// server absorbs harmlessly. No-op on iOS.
 await revnix.handleInstallReferrer(referrer);
 ```
 

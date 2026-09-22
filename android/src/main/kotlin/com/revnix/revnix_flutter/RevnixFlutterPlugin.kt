@@ -18,6 +18,7 @@ import com.revnix.android.AndroidDeviceFacts
 import com.revnix.android.AndroidLifecycle
 import com.revnix.android.AndroidStorage
 import com.revnix.android.PlayBillingConnector
+import com.revnix.android.PlayInstallReferrer
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
@@ -378,6 +379,7 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         client = created
         // Owns connection, purchase replay, acknowledgement, and the queue drain.
         billing = PlayBillingConnector.start(context, created)
+        PlayInstallReferrer.collect(context, created, platform = "android")
         result.success(null)
     }
 
