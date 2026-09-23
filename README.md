@@ -258,6 +258,27 @@ final last = await revnix.getLastDeepLink();
 if (last != null) route(last.url);
 ```
 
+### Install attribution
+
+The install-attribution verdict, straight from the native SDK's own record —
+which channel gets credit for this install, and the campaign fields that came
+with it. `getAttribution()` is a point-in-time read; `onAttribution` delivers
+the same verdict once the native SDK settles on it after cold-start install
+registration, and again whenever it later changes. `getAttribution()` returns
+`null` when no install has been recorded yet or the read failed;
+`onAttribution` simply does not fire until there is a verdict. The plugin
+always hands the native SDK the callback, so the read costs one GET per cold
+start whether or not you listen.
+
+```dart
+final attribution = await revnix.getAttribution();
+if (attribution != null) print(attribution.installMatch);
+
+revnix.onAttribution.listen((attribution) {
+  print('${attribution.installMatch}: ${attribution.source}');
+});
+```
+
 ### SKAdNetwork
 
 iOS only, a no-op on Android. Registration with Apple happens automatically
