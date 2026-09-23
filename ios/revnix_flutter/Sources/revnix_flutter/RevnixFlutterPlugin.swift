@@ -28,6 +28,9 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
     private var deferredDeepLinkSink: FlutterEventSink?
     private let deferredDeepLinkStreamHandler = ImplicitStreamHandler()
     private var pendingDeferredDeepLink: [String: Any?]?
+    private var attributionSink: FlutterEventSink?
+    private let attributionStreamHandler = ImplicitStreamHandler()
+    private var pendingAttribution: [String: Any?]?
 
     public static func register(with registrar: FlutterPluginRegistrar) {
         let instance = RevnixFlutterPlugin()
@@ -62,6 +65,19 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
             }
         }
         deferredDeepLink.setStreamHandler(instance.deferredDeepLinkStreamHandler)
+
+        let attribution = FlutterEventChannel(
+            name: "com.revnix/revnix_flutter/attribution",
+            binaryMessenger: registrar.messenger())
+        instance.attributionStreamHandler.onSink = { [weak instance] sink in
+            guard let instance else { return }
+            instance.attributionSink = sink
+            if let sink, let pending = instance.pendingAttribution {
+                instance.pendingAttribution = nil
+                sink(pending)
+            }
+        }
+        attribution.setStreamHandler(instance.attributionStreamHandler)
     }
 
     /// A separate `FlutterStreamHandler` because the plugin itself already is
@@ -212,6 +228,12 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
                     }
                 case "handleInstallReferrer":
                     result(nil)
+                case "getAttribution":
+                    if let attribution = await client.getAttribution() {
+                        result(Self.map(attribution))
+                    } else {
+                        result(nil)
+                    }
                 case "updateSkanConversionValue":
                     let value = args["value"] as? Int ?? 0
                     let coarse = (args["coarse"] as? String).flatMap(RevnixCoarseValue.init(rawValue:))
@@ -283,6 +305,18 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
                 }
             }
         }
+        let onAttribution: @Sendable (RevnixAttribution) -> Void = {
+            [weak self] attribution in
+            let payload = Self.map(attribution)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if let sink = self.attributionSink {
+                    sink(payload)
+                } else {
+                    self.pendingAttribution = payload
+                }
+            }
+        }
         let client = RevnixClient(
             RevnixConfig(
                 apiKey: apiKey,
@@ -304,6 +338,7 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
                 onImplicitPaywall: implicitTrigger,
                 implicitPlacements: args["implicitPlacements"] as? Bool ?? false,
                 onDeferredDeepLink: deferredDeepLink,
+                onAttribution: onAttribution,
                 sessionTimeout: millis("sessionTimeoutMs", revnixDefaultSessionTimeout),
                 skan: args["skan"] as? Bool ?? true
             ))
@@ -375,6 +410,22 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
                     },
                 ] as [String: Any?]
             },
+        ]
+    }
+
+    private static func map(_ attribution: RevnixAttribution) -> [String: Any?] {
+        [
+            "installMatch": attribution.installMatch,
+            "attributedAt": attribution.attributedAt,
+            "reattributedAt": attribution.reattributedAt,
+            "linkToken": attribution.linkToken,
+            "referrerSource": attribution.referrerSource,
+            "matchSignals": attribution.matchSignals,
+            "source": attribution.source,
+            "medium": attribution.medium,
+            "campaign": attribution.campaign,
+            "term": attribution.term,
+            "content": attribution.content,
         ]
     }
 

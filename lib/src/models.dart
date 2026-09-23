@@ -593,6 +593,68 @@ class LastDeepLink {
       );
 }
 
+/// AT10/AT11: the install-attribution verdict — which channel gets credit
+/// for this install, and the campaign fields that came with it. `null`
+/// (return value of [RevnixClient.getAttribution]) means no install has been
+/// recorded yet, or the read failed.
+class RevnixAttribution {
+  const RevnixAttribution({
+    required this.installMatch,
+    required this.attributedAt,
+    this.reattributedAt,
+    this.linkToken,
+    this.referrerSource,
+    this.matchSignals,
+    this.source,
+    this.medium,
+    this.campaign,
+    this.term,
+    this.content,
+  });
+
+  /// How the install was matched to a click/impression, e.g. `"exact"`,
+  /// `"probabilistic"`, `"referrer"`, `"organic"`.
+  final String installMatch;
+
+  /// Unix ms the verdict was recorded.
+  final int attributedAt;
+
+  /// Unix ms of a later re-attribution (a returning customer matched to a
+  /// new link), or null if this install has never been re-attributed.
+  final int? reattributedAt;
+  final String? linkToken;
+
+  /// Set when the match came from an Android install referrer rather than a
+  /// Revnix link, e.g. `"play"`, `"meta"`, `"preinstall"`.
+  final String? referrerSource;
+
+  /// The probabilistic scorecard that produced [installMatch], when the
+  /// match is not exact.
+  final List<String>? matchSignals;
+  final String? source;
+  final String? medium;
+  final String? campaign;
+  final String? term;
+  final String? content;
+
+  static RevnixAttribution fromMap(Map<Object?, Object?> map) =>
+      RevnixAttribution(
+        installMatch: map['installMatch'] as String? ?? '',
+        attributedAt: map['attributedAt'] as int? ?? 0,
+        reattributedAt: map['reattributedAt'] as int?,
+        linkToken: map['linkToken'] as String?,
+        referrerSource: map['referrerSource'] as String?,
+        matchSignals: (map['matchSignals'] as List<Object?>?)
+            ?.whereType<String>()
+            .toList(),
+        source: map['source'] as String?,
+        medium: map['medium'] as String?,
+        campaign: map['campaign'] as String?,
+        term: map['term'] as String?,
+        content: map['content'] as String?,
+      );
+}
+
 /// REV-272: one implicit moment that resolved to a paywall. Only ever
 /// delivered WITH a paywall — a moment the server answered with none (nothing
 /// attached, or the same paywall the customer is leaving) is reported and then

@@ -1,5 +1,14 @@
 ## Unreleased
 
+- **`getAttribution` / `onAttribution`.** The install-attribution verdict —
+  which channel gets credit for this install, and the campaign fields that
+  came with it — straight from the native SDK's own record.
+  `getAttribution()` is a point-in-time read; `onAttribution` delivers the
+  same verdict once the native SDK settles on it after cold-start install
+  registration, and again whenever it later changes (de-duplicated
+  natively). Needs revnix-swift / revnix-kotlin submodule pins that carry
+  `RevnixAttribution` — inert here until those land. (AT11)
+
 - **`getLastDeepLink`.** Reads the link the customer clicked most recently,
   straight from the native SDK's own deep-link handling, without waiting on
   a stream. Never throws; returns null when nothing has been recorded yet.

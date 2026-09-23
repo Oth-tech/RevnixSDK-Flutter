@@ -7,6 +7,7 @@ import com.revnix.CustomerEntitlements
 import com.revnix.PlacementResolution
 import com.revnix.RegisterPurchaseInput
 import com.revnix.RegisterPurchaseResult
+import com.revnix.RevnixAttribution
 import com.revnix.RevnixClient
 import com.revnix.RevnixConfig
 import com.revnix.RevnixError
@@ -75,6 +76,10 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
 
     private var pendingDeferredDeepLink: Map<String, String>? = null
 
+    private lateinit var attributionEvents: EventChannel
+    private var attributionSink: EventChannel.EventSink? = null
+    private var pendingAttribution: Map<String, Any?>? = null
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
@@ -117,6 +122,24 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
 
             override fun onCancel(arguments: Any?) {
                 deferredDeepLinkSink = null
+            }
+        })
+
+        attributionEvents = EventChannel(
+            binding.binaryMessenger,
+            "com.revnix/revnix_flutter/attribution",
+        )
+        attributionEvents.setStreamHandler(object : EventChannel.StreamHandler {
+            override fun onListen(arguments: Any?, sink: EventChannel.EventSink?) {
+                attributionSink = sink
+                pendingAttribution?.let { pending ->
+                    pendingAttribution = null
+                    sink?.success(pending)
+                }
+            }
+
+            override fun onCancel(arguments: Any?) {
+                attributionSink = null
             }
         })
     }
@@ -278,6 +301,7 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                         result.success(null)
                     }
                     "updateSkanConversionValue" -> result.success(null)
+                    "getAttribution" -> result.success(active.getAttribution()?.let(::map))
                     "setAttributes" -> {
                         active.setAttributes(
                             call.argument<Map<String, Any?>>("attributes").orEmpty()
@@ -364,6 +388,19 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                         }
                     }
                 },
+                onAttribution = { attribution ->
+                    scope.launch {
+                        withContext(Dispatchers.Main) {
+                            val payload = map(attribution)
+                            val sink = attributionSink
+                            if (sink != null) {
+                                sink.success(payload)
+                            } else {
+                                pendingAttribution = payload
+                            }
+                        }
+                    }
+                },
                 lifecycle = (context.applicationContext as? Application)
                     ?.let { AndroidLifecycle(it) },
                 sessionTimeoutMs = call.argument<Number>("sessionTimeoutMs")?.toLong()
@@ -429,6 +466,20 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                 },
             )
         },
+    )
+
+    private fun map(attribution: RevnixAttribution): Map<String, Any?> = mapOf(
+        "installMatch" to attribution.installMatch,
+        "attributedAt" to attribution.attributedAt,
+        "reattributedAt" to attribution.reattributedAt,
+        "linkToken" to attribution.linkToken,
+        "referrerSource" to attribution.referrerSource,
+        "matchSignals" to attribution.matchSignals,
+        "source" to attribution.source,
+        "medium" to attribution.medium,
+        "campaign" to attribution.campaign,
+        "term" to attribution.term,
+        "content" to attribution.content,
     )
 
     private fun map(result: RegisterPurchaseResult): Map<String, Any?> = mapOf(

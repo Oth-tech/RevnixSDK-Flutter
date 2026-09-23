@@ -33,6 +33,9 @@ class RevnixClient {
   static const EventChannel _deferredDeepLinkChannel =
       EventChannel('com.revnix/revnix_flutter/deferred_deep_link');
 
+  static const EventChannel _attributionChannel =
+      EventChannel('com.revnix/revnix_flutter/attribution');
+
   final MethodChannel _channel;
 
   static RevnixClient? _instance;
@@ -399,6 +402,50 @@ class RevnixClient {
   /// install referrer.
   Future<void> handleInstallReferrer(String referrer) =>
       _invoke<void>('handleInstallReferrer', {'referrer': referrer});
+
+  /// AT11: the install-attribution verdict, straight from the native SDK's
+  /// own record — a point-in-time read, not a stream. Never throws: any
+  /// platform error returns null, same as no install recorded yet.
+  Future<RevnixAttribution?> getAttribution() async {
+    try {
+      final map = await _invoke<Map<Object?, Object?>>('getAttribution');
+      final installMatch = map?['installMatch'];
+      return map == null || installMatch is! String || installMatch.isEmpty
+          ? null
+          : RevnixAttribution.fromMap(map);
+    } on RevnixException {
+      return null;
+    } on PlatformException {
+      return null;
+    } on MissingPluginException {
+      return null;
+    }
+  }
+
+  /// AT11: the install-attribution verdict, delivered as the native SDK
+  /// settles on it — once after cold-start install registration the first
+  /// time a verdict is seen, and again whenever it later changes (a
+  /// re-attribution). De-duplicated natively. The plugin always hands the
+  /// native SDK this callback, so the read happens once per cold start
+  /// whether or not anything listens; the stream only decides who hears it.
+  ///
+  /// A single broadcast stream shared by every listener, same reasoning as
+  /// [onDeferredDeepLink]: an event that arrives before you listen is held
+  /// natively and delivered to your first listener, so subscribing any time
+  /// after [configure] still sees the cold-start verdict.
+  Stream<RevnixAttribution> get onAttribution => _attribution;
+
+  late final Stream<RevnixAttribution> _attribution = _attributionChannel
+      .receiveBroadcastStream()
+      .map((event) {
+        final map = (event as Map<Object?, Object?>?) ?? const {};
+        final installMatch = map['installMatch'] as String?;
+        if (installMatch == null || installMatch.isEmpty) return null;
+        return RevnixAttribution.fromMap(map);
+      })
+      .where((event) => event != null)
+      .cast<RevnixAttribution>()
+      .asBroadcastStream();
 
   /// AT10: report a SKAdNetwork conversion value. iOS only — a no-op on
   /// Android. Registration with Apple is automatic inside [registerInstall];
