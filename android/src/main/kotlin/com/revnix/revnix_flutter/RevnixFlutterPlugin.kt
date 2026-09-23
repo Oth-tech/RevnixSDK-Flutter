@@ -277,6 +277,7 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                         if (referrer != null) active.handleInstallReferrer(referrer)
                         result.success(null)
                     }
+                    "updateSkanConversionValue" -> result.success(null)
                     "setAttributes" -> {
                         active.setAttributes(
                             call.argument<Map<String, Any?>>("attributes").orEmpty()

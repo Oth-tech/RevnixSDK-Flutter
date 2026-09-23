@@ -70,6 +70,11 @@ class RevnixClient {
   /// moments this app has configured in the dashboard, delivering each one
   /// that resolves to a paywall on [implicitPaywalls]. Off by default: without
   /// a listener there would be nothing to do with the answer.
+  ///
+  /// [skan] (iOS only) — set false to opt out of SKAdNetwork entirely.
+  /// Registration with Apple otherwise happens automatically inside
+  /// [registerInstall]; see [updateSkanConversionValue] to report conversion
+  /// values.
   static Future<RevnixClient> configure({
     required String apiKey,
     required String baseUrl,
@@ -79,6 +84,7 @@ class RevnixClient {
     Map<String, Object>? device,
     bool implicitPlacements = false,
     Duration sessionTimeout = const Duration(minutes: 30),
+    bool skan = true,
     @visibleForTesting MethodChannel? channel,
   }) async {
     final client = RevnixClient._(channel ?? _defaultChannel);
@@ -91,6 +97,7 @@ class RevnixClient {
       'device': ?device,
       'implicitPlacements': implicitPlacements,
       'sessionTimeoutMs': sessionTimeout.inMilliseconds,
+      'skan': skan,
     });
     _instance = client;
     return client;
@@ -392,6 +399,26 @@ class RevnixClient {
   /// install referrer.
   Future<void> handleInstallReferrer(String referrer) =>
       _invoke<void>('handleInstallReferrer', {'referrer': referrer});
+
+  /// AT10: report a SKAdNetwork conversion value. iOS only — a no-op on
+  /// Android. Registration with Apple is automatic inside [registerInstall];
+  /// this only updates the conversion value already registered.
+  ///
+  /// [value] is the fine-grained conversion value, 0-63. [coarse] is the
+  /// coarse value Apple falls back to once the fine value is no longer
+  /// available. The value goes to Apple, never to Revnix — nothing here
+  /// touches the network. For Apple to deliver the postback your app needs
+  /// `NSAdvertisingAttributionReportEndpoint` in its Info.plist.
+  Future<void> updateSkanConversionValue(
+    int value, {
+    RevnixCoarseValue? coarse,
+    bool lockWindow = false,
+  }) =>
+      _invoke<void>('updateSkanConversionValue', {
+        'value': value,
+        'coarse': ?coarse?.name,
+        'lockWindow': lockWindow,
+      });
 
   /// Single funnel for every call, so a native failure always arrives as a
   /// typed [RevnixException] rather than a bare PlatformException.

@@ -258,6 +258,20 @@ final last = await revnix.getLastDeepLink();
 if (last != null) route(last.url);
 ```
 
+### SKAdNetwork
+
+iOS only, a no-op on Android. Registration with Apple happens automatically
+inside `registerInstall`; report a conversion value whenever you have one
+(fine 0-63, coarse optional). The value goes to Apple, never to Revnix, and
+your app needs `NSAdvertisingAttributionReportEndpoint` in its Info.plist for
+Apple to deliver the postback:
+
+```dart
+await revnix.updateSkanConversionValue(12, coarse: RevnixCoarseValue.medium);
+```
+
+Pass `skan: false` to `configure()` to opt out entirely.
+
 ## Errors
 
 Every native failure arrives as a typed `RevnixException` with `isRetryable`

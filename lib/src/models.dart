@@ -17,6 +17,9 @@ enum RevnixStore {
           orElse: () => RevnixStore.apple);
 }
 
+/// SKAdNetwork coarse conversion value, iOS only.
+enum RevnixCoarseValue { low, medium, high }
+
 /// REV-263: the six paywall interactions [RevnixClient.logPaywallEvent] can
 /// report — what the customer did on a display, between the view that opened
 /// it and the close or purchase that ended it. The server turns each into the
