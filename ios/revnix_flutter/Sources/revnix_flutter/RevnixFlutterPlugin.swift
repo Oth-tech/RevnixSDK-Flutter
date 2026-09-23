@@ -212,6 +212,13 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
                     }
                 case "handleInstallReferrer":
                     result(nil)
+                case "updateSkanConversionValue":
+                    let value = args["value"] as? Int ?? 0
+                    let coarse = (args["coarse"] as? String).flatMap(RevnixCoarseValue.init(rawValue:))
+                    await client.updateSkanConversionValue(
+                        value, coarse: coarse,
+                        lockWindow: args["lockWindow"] as? Bool ?? false)
+                    result(nil)
                 case "setAttributes":
                     let raw = args["attributes"] as? [String: Any] ?? [:]
                     try await client.setAttributes(Self.jsonValues(raw))
@@ -297,7 +304,8 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
                 onImplicitPaywall: implicitTrigger,
                 implicitPlacements: args["implicitPlacements"] as? Bool ?? false,
                 onDeferredDeepLink: deferredDeepLink,
-                sessionTimeout: millis("sessionTimeoutMs", revnixDefaultSessionTimeout)
+                sessionTimeout: millis("sessionTimeoutMs", revnixDefaultSessionTimeout),
+                skan: args["skan"] as? Bool ?? true
             ))
         // REV-272: retire the previous client BEFORE replacing it. Its
         // didBecomeActive observer lives on NotificationCenter and outlives the
