@@ -1,10 +1,11 @@
 ## Unreleased
 
+- **`updateSkanConversionValue(value, coarse:, lockWindow:)` and
+  `configure(skan:)`** (iOS only, AT10).
+
 - **`logAdRevenue`.** Report impression-level ad revenue from your mediation
   SDK's paid-event callback (AdMob `onPaidEvent`, AppLovin MAX
-  `onAdRevenuePaid`). Fire-and-forget like the other beacons. Needs
-  revnix-swift / revnix-kotlin submodule pins that carry `logAdRevenue` —
-  inert here until those land. (PT8)
+  `onAdRevenuePaid`). Fire-and-forget like the other beacons. (PT8)
 
 - **`getAttribution` / `onAttribution`.** The install-attribution verdict —
   which channel gets credit for this install, and the campaign fields that
@@ -12,8 +13,7 @@
   `getAttribution()` is a point-in-time read; `onAttribution` delivers the
   same verdict once the native SDK settles on it after cold-start install
   registration, and again whenever it later changes (de-duplicated
-  natively). Needs revnix-swift / revnix-kotlin submodule pins that carry
-  `RevnixAttribution` — inert here until those land. (AT11)
+  natively). (AT11)
 
 - **`getLastDeepLink`.** Reads the link the customer clicked most recently,
   straight from the native SDK's own deep-link handling, without waiting on

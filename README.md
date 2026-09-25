@@ -160,7 +160,7 @@ close and most interactions; rendering your own paywall, these are yours:
 |---|---|
 | `logPaywallShown(…) → Future<String?>` | The impression beacon, resolving with the `viewId` it minted. |
 | `logPaywallClosed(viewId, …)` | Ends that display. Idempotent per view id, so a retry or a double-dismiss cannot count two. Without it a funnel knows how many saw the paywall, not how many left without buying. |
-| `logPaywallEvent(event, viewId, …)` | One of six interactions — `selected`, `purchaseStarted`, `purchaseAbandoned`, `purchaseFailed`, `restore`, `error` — i.e. what happened BETWEEN the display and the close. |
+| `logPaywallEvent(event, viewId, …)` | One of six interactions (`selected`, `purchaseStarted`, `purchaseAbandoned`, `purchaseFailed`, `restore`, `error`), i.e. what happened BETWEEN the display and the close. |
 
 The purchase **outcome** is always yours, even with the built-in renderer:
 your app performs the `in_app_purchase` call, so only your app sees whether
@@ -202,19 +202,19 @@ appLinks.uriLinkStream.listen((uri) => revnix.handleDeepLink(uri.toString()));
 
 With app_links 6 or later, `uriLinkStream` delivers the link that launched
 the app as its first event and every link after it, and does not replay it
-on a hot restart or a second subscription — subscribe once at startup and
+on a hot restart or a second subscription: subscribe once at startup and
 do not also call `getInitialLink()`; it is the same cold-start link and
 would count twice. On uni_links or app_links 5 and earlier the stream
 carries only links that arrive while running, so also hand over
 `getInitialLink()` once at startup.
 
-Pass `placementKey: trigger.resolution.placementKey` to `RevnixPaywall` —
+Pass `placementKey: trigger.resolution.placementKey` to `RevnixPaywall`:
 that marks the display as implicit and is what stops a `paywall_decline`
 paywall from firing `paywall_decline` again. A close is a decline: never
 report one for a display that ended in a purchase.
 
 The dashboard QR/link preview (`<scheme>://revnix-preview?revnix_preview=…`)
-arrives the same way — hand the URL to `handleDeepLink` and it comes back on
+arrives the same way: hand the URL to `handleDeepLink` and it comes back on
 `implicitPaywalls` like any other trigger, detectable by
 `resolution.placementKey == revnixPreviewPlacementKey`. `RevnixPaywall`
 already refuses to call `onPurchase` for that placement key, showing a
@@ -225,7 +225,7 @@ a custom UI rendering the preview itself must add the same check.
 
 The link a customer clicked before they had the app, echoed back once per
 install. Unlike the Unity and Capacitor SDKs, Flutter never calls
-`registerInstall` on its own — call it yourself after `configure()`, as in
+`registerInstall` on its own. Call it yourself after `configure()`, as in
 the quick start above, or the iOS side of this event never fires:
 
 ```dart
@@ -234,7 +234,7 @@ revnix.onDeferredDeepLink.listen((event) {
   route(url); // match is DeferredDeepLinkMatch.exact or .probabilistic
 });
 
-// Android only, and only after configure() — the Android side rejects the
+// Android only, and only after configure() - the Android side rejects the
 // call otherwise. Hand the raw referrer to the SDK from whichever
 // install-referrer plugin you already use. No-op on iOS.
 await revnix.handleInstallReferrer(referrer);
@@ -260,15 +260,17 @@ if (last != null) route(last.url);
 
 ### Install attribution
 
-The install-attribution verdict, straight from the native SDK's own record —
+The install-attribution verdict, straight from the native SDK's own record:
 which channel gets credit for this install, and the campaign fields that came
 with it. `getAttribution()` is a point-in-time read; `onAttribution` delivers
 the same verdict once the native SDK settles on it after cold-start install
 registration, and again whenever it later changes. `getAttribution()` returns
 `null` when no install has been recorded yet or the read failed;
 `onAttribution` simply does not fire until there is a verdict. The plugin
-always hands the native SDK the callback, so the read costs one GET per cold
-start whether or not you listen.
+always hands the native SDK the callback, so the SDK fetches the verdict on
+its own once after the install is first reported, and again after an
+install-referrer or Apple Search Ads report; later changes are only seen when
+you call `getAttribution()`.
 
 ```dart
 final attribution = await revnix.getAttribution();
@@ -292,6 +294,24 @@ await revnix.updateSkanConversionValue(12, coarse: RevnixCoarseValue.medium);
 ```
 
 Pass `skan: false` to `configure()` to opt out entirely.
+
+### Ad revenue
+
+Call `logAdRevenue` from your mediation SDK's paid-event callback (AdMob
+`onPaidEvent`, AppLovin MAX `onAdRevenuePaid`). Fire-and-forget; a `revenue`
+of 0 or less is dropped. It feeds the Return on ad spend table, see
+[Ad revenue](https://revnix.io/docs/ad-revenue):
+
+```dart
+await revnix.logAdRevenue(
+  revenue: 0.0032,
+  currency: 'USD',
+  network: 'admob',
+  mediation: 'applovin_max',
+  adUnit: adUnitId,
+  format: 'rewarded',
+);
+```
 
 ## Errors
 
