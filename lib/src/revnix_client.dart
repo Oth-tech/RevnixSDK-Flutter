@@ -275,6 +275,30 @@ class RevnixClient {
         'eventId': ?eventId,
       });
 
+  /// Report impression-level ad revenue from your mediation SDK's paid-event
+  /// callback (AdMob `onPaidEvent`, AppLovin MAX `onAdRevenuePaid`).
+  /// Fire-and-forget like the other beacons.
+  Future<void> logAdRevenue({
+    required double revenue,
+    required String currency,
+    String? network,
+    String? mediation,
+    String? adUnit,
+    String? placement,
+    String? format,
+    String? eventId,
+  }) =>
+      _invoke<void>('logAdRevenue', {
+        'revenue': revenue,
+        'currency': currency,
+        'network': ?network,
+        'mediation': ?mediation,
+        'adUnit': ?adUnit,
+        'placement': ?placement,
+        'format': ?format,
+        'eventId': ?eventId,
+      });
+
   /// Set attributes on the current customer. Attributes are what A/B-test
   /// audiences target — set `country`, `app_version`, `locale`, or any custom
   /// key you want to segment on. A null value deletes the key.

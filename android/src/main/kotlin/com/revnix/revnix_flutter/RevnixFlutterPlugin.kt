@@ -270,6 +270,19 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                             result.success(null)
                         }
                     }
+                    "logAdRevenue" -> {
+                        active.logAdRevenue(
+                            revenue = call.argument<Number>("revenue")?.toDouble() ?: 0.0,
+                            currency = call.argument<String>("currency").orEmpty(),
+                            network = call.argument<String>("network"),
+                            mediation = call.argument<String>("mediation"),
+                            adUnit = call.argument<String>("adUnit"),
+                            placement = call.argument<String>("placement"),
+                            format = call.argument<String>("format"),
+                            eventId = call.argument<String>("eventId"),
+                        )
+                        result.success(null)
+                    }
                     "handleDeepLink" -> {
                         // REV-272: the one implicit moment no SDK can see for
                         // itself — the URL reaches the host's own Activity.

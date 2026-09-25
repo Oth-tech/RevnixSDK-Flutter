@@ -90,6 +90,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.android.billingclient:billing-ktx:8.3.0")
+    implementation("com.android.installreferrer:installreferrer:2.2")
 
     testImplementation("org.jetbrains.kotlin:kotlin-test")
 }
