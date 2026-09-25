@@ -199,6 +199,17 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
                         message: args["message"] as? String,
                         eventId: args["eventId"] as? String)
                     result(nil)
+                case "logAdRevenue":
+                    await client.logAdRevenue(
+                        revenue: (args["revenue"] as? NSNumber)?.doubleValue ?? 0,
+                        currency: args["currency"] as? String ?? "",
+                        network: args["network"] as? String,
+                        mediation: args["mediation"] as? String,
+                        adUnit: args["adUnit"] as? String,
+                        placement: args["placement"] as? String,
+                        format: args["format"] as? String,
+                        eventId: args["eventId"] as? String)
+                    result(nil)
                 case "handleDeepLink":
                     // REV-272: the one implicit moment no SDK can see for
                     // itself — the URL reaches the host's own entry point.

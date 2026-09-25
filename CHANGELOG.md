@@ -1,5 +1,11 @@
 ## Unreleased
 
+- **`logAdRevenue`.** Report impression-level ad revenue from your mediation
+  SDK's paid-event callback (AdMob `onPaidEvent`, AppLovin MAX
+  `onAdRevenuePaid`). Fire-and-forget like the other beacons. Needs
+  revnix-swift / revnix-kotlin submodule pins that carry `logAdRevenue` —
+  inert here until those land. (PT8)
+
 - **`getAttribution` / `onAttribution`.** The install-attribution verdict —
   which channel gets credit for this install, and the campaign fields that
   came with it — straight from the native SDK's own record.
