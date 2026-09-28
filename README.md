@@ -337,9 +337,11 @@ Adjust's attribution callback:
 
 ```dart
 Adjust.addAttributionCallback((attribution) {
+  final network = attribution.network;
+  if (network == null || network.isEmpty) return;
   revnix.setAttribution(
     provider: 'adjust',
-    network: attribution.network ?? '',
+    network: network,
     campaign: attribution.campaign,
     adGroup: attribution.adgroup,
     creative: attribution.creative,
