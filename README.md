@@ -313,6 +313,42 @@ await revnix.logAdRevenue(
 );
 ```
 
+### Attribution import
+
+Call `setAttribution` from your MMP's own attribution callback so Revnix
+credits revenue to the network and campaign that MMP already identified.
+
+AppsFlyer's `onConversionDataSuccess`:
+
+```dart
+void onConversionDataSuccess(Map<String, dynamic> data) {
+  if (data['af_status'] == 'Organic') return;
+  revnix.setAttribution(
+    provider: 'appsflyer',
+    network: data['media_source'] as String? ?? '',
+    campaign: data['campaign'] as String?,
+    adGroup: data['af_adset'] as String?,
+    creative: data['af_ad'] as String?,
+  );
+}
+```
+
+Adjust's attribution callback:
+
+```dart
+Adjust.addAttributionCallback((attribution) {
+  final network = attribution.network;
+  if (network == null || network.isEmpty) return;
+  revnix.setAttribution(
+    provider: 'adjust',
+    network: network,
+    campaign: attribution.campaign,
+    adGroup: attribution.adgroup,
+    creative: attribution.creative,
+  );
+});
+```
+
 ## Errors
 
 Every native failure arrives as a typed `RevnixException` with `isRetryable`

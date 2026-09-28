@@ -7,6 +7,10 @@
   SDK's paid-event callback (AdMob `onPaidEvent`, AppLovin MAX
   `onAdRevenuePaid`). Fire-and-forget like the other beacons. (PT8)
 
+- **`setAttribution`.** Hand the SDK an attribution verdict your MMP (Adjust,
+  AppsFlyer, …) already reached, from that MMP's own callback, so Revnix can
+  credit revenue to the right network and campaign. (PT11)
+
 - **`getAttribution` / `onAttribution`.** The install-attribution verdict —
   which channel gets credit for this install, and the campaign fields that
   came with it — straight from the native SDK's own record.
