@@ -299,6 +299,24 @@ class RevnixClient {
         'eventId': ?eventId,
       });
 
+  /// PT11: hand the SDK an attribution verdict your MMP (Adjust, AppsFlyer,
+  /// …) already reached, from that MMP's own callback. Fire-and-forget like
+  /// the other beacons.
+  Future<void> setAttribution({
+    required String provider,
+    required String network,
+    String? campaign,
+    String? adGroup,
+    String? creative,
+  }) =>
+      _invoke<void>('setAttribution', {
+        'provider': provider,
+        'network': network,
+        'campaign': ?campaign,
+        'adGroup': ?adGroup,
+        'creative': ?creative,
+      });
+
   /// Set attributes on the current customer. Attributes are what A/B-test
   /// audiences target — set `country`, `app_version`, `locale`, or any custom
   /// key you want to segment on. A null value deletes the key.
