@@ -317,6 +317,12 @@ class RevnixClient {
         'creative': ?creative,
       });
 
+  /// Register this device's push token for uninstall measurement: Revnix
+  /// sends a daily silent probe and records `app.uninstalled` when
+  /// APNs/FCM report the token dead. iOS/Android only, fire-and-forget.
+  Future<void> setPushToken(String token) =>
+      _invoke<void>('setPushToken', {'token': token});
+
   /// Set attributes on the current customer. Attributes are what A/B-test
   /// audiences target — set `country`, `app_version`, `locale`, or any custom
   /// key you want to segment on. A null value deletes the key.
