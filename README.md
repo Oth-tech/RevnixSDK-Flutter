@@ -349,6 +349,27 @@ Adjust.addAttributionCallback((attribution) {
 });
 ```
 
+### Uninstall measurement
+
+Revnix measures uninstalls the way Adjust/AppsFlyer do: hand it the
+device's push token, and once a day a silent push probes it; when
+APNs/FCM reports the token dead, the customer gets an `app.uninstalled`
+event. Get the token from `firebase_messaging` and forward it:
+
+```dart
+FirebaseMessaging.instance.getToken().then((token) {
+  if (token != null) revnix.setPushToken(token);
+});
+FirebaseMessaging.instance.onTokenRefresh.listen(revnix.setPushToken);
+```
+
+Fire-and-forget; handlers forward the call to the native SDK, which posts
+and dedupes per customer+token. Requires Firebase Cloud Messaging set up
+on Android and the Push Notifications + Background Modes → Remote
+notifications capability on iOS; no notification permission needed, the
+probe is silent. See
+[Uninstall measurement](https://revnix.io/docs/uninstall-measurement).
+
 ## Errors
 
 Every native failure arrives as a typed `RevnixException` with `isRetryable`

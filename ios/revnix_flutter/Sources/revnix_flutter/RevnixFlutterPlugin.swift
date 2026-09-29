@@ -218,6 +218,9 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
                         adGroup: args["adGroup"] as? String,
                         creative: args["creative"] as? String)
                     result(nil)
+                case "setPushToken":
+                    await client.setPushToken(args["token"] as? String ?? "")
+                    result(nil)
                 case "handleDeepLink":
                     // REV-272: the one implicit moment no SDK can see for
                     // itself — the URL reaches the host's own entry point.
