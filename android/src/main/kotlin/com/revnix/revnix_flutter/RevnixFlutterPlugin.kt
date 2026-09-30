@@ -283,6 +283,14 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                         )
                         result.success(null)
                     }
+                    "track" -> {
+                        active.track(
+                            event = call.argument<String>("event").orEmpty(),
+                            properties = call.argument<Map<String, Any?>>("properties"),
+                            eventId = call.argument<String>("eventId"),
+                        )
+                        result.success(null)
+                    }
                     "setAttribution" -> {
                         active.setAttribution(
                             provider = call.argument<String>("provider").orEmpty(),

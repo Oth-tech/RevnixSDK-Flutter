@@ -1,5 +1,9 @@
 ## Unreleased
 
+- **`track`.** Report a custom in-app event (name + optional properties),
+  recorded on the ledger as `custom.<event>`. Fire-and-forget like the other
+  beacons; not for purchases. (MS8)
+
 - **`updateSkanConversionValue(value, coarse:, lockWindow:)` and
   `configure(skan:)`** (iOS only, AT10).
 

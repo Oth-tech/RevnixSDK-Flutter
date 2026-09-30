@@ -313,6 +313,16 @@ await revnix.logAdRevenue(
 );
 ```
 
+### Custom events
+
+Call `track` to report an in-app event that isn't a purchase — Revnix records
+it as `custom.<event>`. Fire-and-forget. `event` must match
+`^[a-z0-9_]{1,64}$`.
+
+```dart
+await revnix.track('level_up', properties: {'level': 5});
+```
+
 ### Attribution import
 
 Call `setAttribution` from your MMP's own attribution callback so Revnix
