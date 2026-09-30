@@ -299,6 +299,19 @@ class RevnixClient {
         'eventId': ?eventId,
       });
 
+  /// Report a custom in-app event. Fire-and-forget like the other beacons.
+  /// Not for purchases: those stay on [registerPurchase].
+  Future<void> track(
+    String event, {
+    Map<String, Object>? properties,
+    String? eventId,
+  }) =>
+      _invoke<void>('track', {
+        'event': event,
+        'properties': ?properties,
+        'eventId': ?eventId,
+      });
+
   /// PT11: hand the SDK an attribution verdict your MMP (Adjust, AppsFlyer,
   /// …) already reached, from that MMP's own callback. Fire-and-forget like
   /// the other beacons.

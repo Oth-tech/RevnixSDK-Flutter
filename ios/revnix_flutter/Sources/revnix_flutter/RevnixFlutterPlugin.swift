@@ -210,6 +210,18 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
                         format: args["format"] as? String,
                         eventId: args["eventId"] as? String)
                     result(nil)
+                case "track":
+                    let properties = (args["properties"] as? [String: Any])?.compactMapValues { value -> JSONValue? in
+                        if let n = value as? NSNumber, CFGetTypeID(n) == CFBooleanGetTypeID() { return .bool(n.boolValue) }
+                        if let n = value as? NSNumber { return .number(n.doubleValue) }
+                        if let s = value as? String { return .string(s) }
+                        return nil
+                    }
+                    await client.track(
+                        args["event"] as? String ?? "",
+                        properties: properties,
+                        eventId: args["eventId"] as? String)
+                    result(nil)
                 case "setAttribution":
                     await client.setAttribution(
                         provider: args["provider"] as? String ?? "",
