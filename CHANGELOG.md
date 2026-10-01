@@ -1,5 +1,11 @@
 ## Unreleased
 
+- **`requestTrackingAuthorization` and `configure(attWaitTimeout:)`.** Show
+  Apple's App Tracking Transparency prompt and get its status back (0–3, -1
+  off iOS); the answer and, when authorized, the IDFA are stored on the
+  customer. `attWaitTimeout` holds the first install report until the prompt
+  is answered. (TP3)
+
 - **`track`.** Report a custom in-app event (name + optional properties),
   recorded on the ledger as `custom.<event>`. Fire-and-forget like the other
   beacons; not for purchases. (MS8)
