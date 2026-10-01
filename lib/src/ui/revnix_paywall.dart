@@ -1101,7 +1101,7 @@ class _RevnixPaywallState extends State<RevnixPaywall> {
               Padding(
                 padding: const EdgeInsets.only(top: 6),
                 child: Text(
-                  '— ${review.author}',
+                  review.author!,
                   style: TextStyle(fontSize: 12, color: t.textSecondary),
                 ),
               ),
