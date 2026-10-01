@@ -1,5 +1,10 @@
 ## Unreleased
 
+- **iOS privacy manifest.** The plugin now bundles revnix-swift's
+  `PrivacyInfo.xcprivacy` (CocoaPods `revnix_flutter_privacy` bundle; SwiftPM
+  through the Revnix package) in place of the empty template, which was never
+  bundled. (TP8)
+
 - **`requestTrackingAuthorization` and `configure(attWaitTimeout:)`.** Show
   Apple's App Tracking Transparency prompt and get its status back (0–3, -1
   off iOS); the answer and, when authorized, the IDFA are stored on the
