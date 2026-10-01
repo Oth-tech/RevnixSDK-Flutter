@@ -233,6 +233,8 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
                 case "setPushToken":
                     await client.setPushToken(args["token"] as? String ?? "")
                     result(nil)
+                case "requestTrackingAuthorization":
+                    result(await client.requestTrackingAuthorization())
                 case "handleDeepLink":
                     // REV-272: the one implicit moment no SDK can see for
                     // itself — the URL reaches the host's own entry point.
@@ -374,7 +376,8 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
                 onDeferredDeepLink: deferredDeepLink,
                 onAttribution: onAttribution,
                 sessionTimeout: millis("sessionTimeoutMs", revnixDefaultSessionTimeout),
-                skan: args["skan"] as? Bool ?? true
+                skan: args["skan"] as? Bool ?? true,
+                attWaitTimeout: (args["attWaitTimeoutMs"] as? Int).map { TimeInterval($0) / 1000 }
             ))
         // REV-272: retire the previous client BEFORE replacing it. Its
         // didBecomeActive observer lives on NotificationCenter and outlives the

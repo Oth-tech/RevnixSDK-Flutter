@@ -78,6 +78,11 @@ class RevnixClient {
   /// Registration with Apple otherwise happens automatically inside
   /// [registerInstall]; see [updateSkanConversionValue] to report conversion
   /// values.
+  ///
+  /// [attWaitTimeout] (iOS only, TP3) holds the first [registerInstall]
+  /// report up to this long while the App Tracking Transparency prompt is
+  /// unanswered, so the install goes out with the IDFA already stored. Null
+  /// (the default) never waits.
   static Future<RevnixClient> configure({
     required String apiKey,
     required String baseUrl,
@@ -88,6 +93,7 @@ class RevnixClient {
     bool implicitPlacements = false,
     Duration sessionTimeout = const Duration(minutes: 30),
     bool skan = true,
+    Duration? attWaitTimeout,
     @visibleForTesting MethodChannel? channel,
   }) async {
     final client = RevnixClient._(channel ?? _defaultChannel);
@@ -101,6 +107,7 @@ class RevnixClient {
       'implicitPlacements': implicitPlacements,
       'sessionTimeoutMs': sessionTimeout.inMilliseconds,
       'skan': skan,
+      'attWaitTimeoutMs': ?attWaitTimeout?.inMilliseconds,
     });
     _instance = client;
     return client;
@@ -335,6 +342,13 @@ class RevnixClient {
   /// APNs/FCM report the token dead. iOS/Android only, fire-and-forget.
   Future<void> setPushToken(String token) =>
       _invoke<void>('setPushToken', {'token': token});
+
+  /// TP3: show Apple's App Tracking Transparency prompt and return its
+  /// answer: 0 notDetermined, 1 restricted, 2 denied, 3 authorized, or -1
+  /// off iOS. Stores `att_status` on the customer, plus `idfa` when
+  /// authorized. Needs `NSUserTrackingUsageDescription` in Info.plist.
+  Future<int> requestTrackingAuthorization() async =>
+      await _invoke<int>('requestTrackingAuthorization') ?? -1;
 
   /// Set attributes on the current customer. Attributes are what A/B-test
   /// audiences target — set `country`, `app_version`, `locale`, or any custom

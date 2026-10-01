@@ -305,6 +305,7 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                         active.setPushToken(call.argument<String>("token").orEmpty())
                         result.success(null)
                     }
+                    "requestTrackingAuthorization" -> result.success(-1)
                     "handleDeepLink" -> {
                         // REV-272: the one implicit moment no SDK can see for
                         // itself — the URL reaches the host's own Activity.

@@ -380,6 +380,22 @@ notifications capability on iOS; no notification permission needed, the
 probe is silent. See
 [Uninstall measurement](https://revnix.io/docs/uninstall-measurement).
 
+### App Tracking Transparency
+
+iOS only, returns `-1` on Android. Shows Apple's ATT prompt and returns its
+answer (`0` notDetermined, `1` restricted, `2` denied, `3` authorized);
+stores `att_status` and `idfa` (when authorized) as customer attributes.
+Needs `NSUserTrackingUsageDescription` in Info.plist:
+
+```dart
+final status = await revnix.requestTrackingAuthorization();
+```
+
+Pass `attWaitTimeout: Duration(seconds: 30)` to `configure()` to hold the
+first `registerInstall()` report while the prompt is unanswered, so the
+install carries the IDFA. See
+[App Tracking Transparency](https://revnix.io/docs/app-tracking-transparency).
+
 ## Errors
 
 Every native failure arrives as a typed `RevnixException` with `isRetryable`
