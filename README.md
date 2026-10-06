@@ -64,7 +64,7 @@ await revnix.registerPurchase(RegisterPurchaseInput(
 
 // Google: the purchase token is BOTH the token and the transaction id.
 final result = await revnix.registerPurchase(RegisterPurchaseInput.google(
-  purchaseToken: purchase.purchaseToken,
+  purchaseToken: purchase.verificationData.serverVerificationData,
   productId: 'pro.monthly',
 ));
 
@@ -150,6 +150,11 @@ internally; `loading: true` turns the CTA into a spinner. The plugin adds no
 `url_launcher` dependency, so a dashboard-configured Terms/Privacy URL is
 handed to your `onOpenUrl` callback to open; an explicit `onTerms`/`onPrivacy`
 handler always wins over the config URL.
+
+A designed paywall picks its language from the device.
+`RevnixClient.setLocale('de')` forces every `RevnixPaywall` built afterwards
+into that language (null clears it); `RevnixPaywall(locale: ...)` overrides
+it for one widget.
 
 ### Reporting the whole life of a display
 
@@ -364,13 +369,20 @@ Adjust.addAttributionCallback((attribution) {
 Revnix measures uninstalls the way Adjust/AppsFlyer do: hand it the
 device's push token, and once a day a silent push probes it; when
 APNs/FCM reports the token dead, the customer gets an `app.uninstalled`
-event. Get the token from `firebase_messaging` and forward it:
+event. Revnix probes iOS tokens through APNs directly, so an FCM token on
+iOS is never delivered: get the APNs token on iOS and the FCM token on
+Android with `firebase_messaging`, and forward whichever one applies:
 
 ```dart
-FirebaseMessaging.instance.getToken().then((token) {
-  if (token != null) revnix.setPushToken(token);
-});
-FirebaseMessaging.instance.onTokenRefresh.listen(revnix.setPushToken);
+if (Platform.isIOS) {
+  final apns = await FirebaseMessaging.instance.getAPNSToken();
+  if (apns != null) revnix.setPushToken(apns);
+} else {
+  FirebaseMessaging.instance.getToken().then((token) {
+    if (token != null) revnix.setPushToken(token);
+  });
+  FirebaseMessaging.instance.onTokenRefresh.listen(revnix.setPushToken);
+}
 ```
 
 Fire-and-forget; handlers forward the call to the native SDK, which posts
