@@ -2148,10 +2148,11 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
   Widget? _links(LinksBlock block, BlockStyle? style) {
     // An explicit host handler wins over the config URL — the app knows best
     // how to open its own legal pages; the URL is the no-handler fallback.
+    final labels = revnixLinkLabels(ctx.doc.localization.defaultLocale);
     final entries = <(String, VoidCallback?)>[];
-    if (block.showRestore != false) entries.add(('Restore', ctx.onRestore));
-    if (block.showTerms != false) entries.add(('Terms', ctx.onTerms));
-    if (block.showPrivacy != false) entries.add(('Privacy', ctx.onPrivacy));
+    if (block.showRestore != false) entries.add((labels.restore, ctx.onRestore));
+    if (block.showTerms != false) entries.add((labels.terms, ctx.onTerms));
+    if (block.showPrivacy != false) entries.add((labels.privacy, ctx.onPrivacy));
     if (entries.isEmpty) return null;
     final children = <Widget>[];
     for (var i = 0; i < entries.length; i++) {
