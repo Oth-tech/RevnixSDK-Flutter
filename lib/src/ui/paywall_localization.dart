@@ -22,7 +22,8 @@ import 'paywall_blocks.dart';
 class PaywallLocalization {
   const PaywallLocalization({this.defaultLocale, this.tables = const {}});
 
-  /// The language the tree's own copy is written in. Never a key in [tables].
+  /// The language the tree's own copy is written in; a localized copy names
+  /// the language it was localized to. Never a key in a parsed doc's [tables].
   final String? defaultLocale;
 
   /// BCP-47 tag → (`<blockId>.<path>` → translated string).
@@ -132,9 +133,16 @@ List<String> revnixLocaleChain(
   return chain;
 }
 
+String? _localeOverride;
+
+void revnixSetLocale(String? tag) {
+  _localeOverride = tag == null || tag.isEmpty ? null : tag;
+}
+
 /// The device's language. `PlatformDispatcher.locale` is what Flutter itself
 /// localizes to, so a paywall matching it matches the rest of the app.
 String? revnixDeviceLocale() {
+  if (_localeOverride != null) return _localeOverride;
   try {
     return ui.PlatformDispatcher.instance.locale.toLanguageTag();
   } catch (_) {
@@ -252,6 +260,85 @@ PaywallBlockDoc revnixLocalizeDoc(PaywallBlockDoc doc, String? locale) {
     accentInk: doc.accentInk,
     fontFamily: doc.fontFamily,
     blocks: doc.blocks.map((b) => _localizeBlock(b, lookup)).toList(),
-    localization: localization,
+    localization: PaywallLocalization(
+      defaultLocale: chain.first,
+      tables: localization.tables,
+    ),
   );
+}
+
+const _linkLabelAliases = {'iw': 'he', 'in': 'id', 'no': 'nb', 'tl': 'fil'};
+
+const _linkLabels = <String, (String, String, String)>{
+  'ar': ('استعادة', 'الشروط', 'الخصوصية'),
+  'bg': ('Възстановяване', 'Условия', 'Поверителност'),
+  'bn': ('পুনরুদ্ধার', 'শর্তাবলী', 'গোপনীয়তা'),
+  'ca': ('Restaura', 'Condicions', 'Privadesa'),
+  'cs': ('Obnovit', 'Podmínky', 'Soukromí'),
+  'da': ('Gendan', 'Vilkår', 'Privatliv'),
+  'de': ('Wiederherstellen', 'AGB', 'Datenschutz'),
+  'el': ('Επαναφορά', 'Όροι', 'Απόρρητο'),
+  'en': ('Restore', 'Terms', 'Privacy'),
+  'es': ('Restaurar', 'Términos', 'Privacidad'),
+  'et': ('Taasta', 'Tingimused', 'Privaatsus'),
+  'fa': ('بازیابی', 'شرایط', 'حریم خصوصی'),
+  'fi': ('Palauta', 'Ehdot', 'Tietosuoja'),
+  'fil': ('I-restore', 'Mga Tuntunin', 'Privacy'),
+  'fr': ('Restaurer', 'Conditions', 'Confidentialité'),
+  'he': ('שחזור', 'תנאים', 'פרטיות'),
+  'hi': ('पुनर्स्थापित करें', 'शर्तें', 'गोपनीयता'),
+  'hr': ('Vrati', 'Uvjeti', 'Privatnost'),
+  'hu': ('Visszaállítás', 'Feltételek', 'Adatvédelem'),
+  'id': ('Pulihkan', 'Ketentuan', 'Privasi'),
+  'it': ('Ripristina', 'Termini', 'Privacy'),
+  'ja': ('購入を復元', '利用規約', 'プライバシー'),
+  'ko': ('구매 복원', '이용약관', '개인정보'),
+  'lt': ('Atkurti', 'Sąlygos', 'Privatumas'),
+  'lv': ('Atjaunot', 'Noteikumi', 'Privātums'),
+  'ms': ('Pulihkan', 'Terma', 'Privasi'),
+  'nb': ('Gjenopprett', 'Vilkår', 'Personvern'),
+  'nl': ('Herstellen', 'Voorwaarden', 'Privacy'),
+  'pl': ('Przywróć', 'Regulamin', 'Prywatność'),
+  'pt': ('Restaurar', 'Termos', 'Privacidade'),
+  'ro': ('Restaurează', 'Termeni', 'Confidențialitate'),
+  'ru': ('Восстановить', 'Условия', 'Конфиденциальность'),
+  'sk': ('Obnoviť', 'Podmienky', 'Súkromie'),
+  'sl': ('Obnovi', 'Pogoji', 'Zasebnost'),
+  'sr': ('Врати', 'Услови', 'Приватност'),
+  'sv': ('Återställ', 'Villkor', 'Integritet'),
+  'th': ('กู้คืน', 'ข้อกำหนด', 'ความเป็นส่วนตัว'),
+  'tr': ('Geri Yükle', 'Koşullar', 'Gizlilik'),
+  'uk': ('Відновити', 'Умови', 'Конфіденційність'),
+  'ur': ('بحال کریں', 'شرائط', 'رازداری'),
+  'vi': ('Khôi phục', 'Điều khoản', 'Quyền riêng tư'),
+  'zh': ('恢复购买', '条款', '隐私'),
+  'zh-Hant': ('恢復購買', '條款', '隱私'),
+};
+
+/// The three built-in paywall footer labels (restore/terms/privacy), in the
+/// language [locale] resolves to. Falls back to English for any language not
+/// in the 43-entry table. Mandarin picks traditional script for Taiwan, Hong
+/// Kong and Macau unless the tag is explicitly simplified.
+({String restore, String terms, String privacy}) revnixLinkLabels(
+  String? locale,
+) {
+  final (restore, terms, privacy) = _linkLabels[_linkLabelTag(locale)]!;
+  return (restore: restore, terms: terms, privacy: privacy);
+}
+
+String _linkLabelTag(String? locale) {
+  final tag = revnixNormalizeLocale(locale);
+  if (tag == null) return 'en';
+  final lang = _baseLanguage(tag);
+  if (lang == 'zh') {
+    final parts = tag.split('-').skip(1).toList();
+    final hasHant = parts.contains('Hant');
+    final hasHans = parts.contains('Hans');
+    final region = parts.where((p) => RegExp(r'^[A-Z]{2}$').hasMatch(p));
+    final isTraditionalRegion =
+        region.isNotEmpty && ['TW', 'HK', 'MO'].contains(region.first);
+    return hasHant || (!hasHans && isTraditionalRegion) ? 'zh-Hant' : 'zh';
+  }
+  final base = _linkLabelAliases[lang] ?? lang;
+  return _linkLabels.containsKey(base) ? base : 'en';
 }

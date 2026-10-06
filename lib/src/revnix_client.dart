@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import 'errors.dart';
 import 'models.dart';
+import 'ui/paywall_localization.dart' show revnixSetLocale;
 
 /// Flutter client for Revnix.
 ///
@@ -360,6 +361,11 @@ class RevnixClient {
   /// a device.
   Future<void> setAttributes(Map<String, Object?> attributes) =>
       _invoke<void>('setAttributes', {'attributes': attributes});
+
+  /// Forces paywalls to render in [tag]'s language regardless of the
+  /// device's, for a host whose in-app language picker differs from the OS
+  /// locale. Affects paywalls built after this call; `null` clears it.
+  static void setLocale(String? tag) => revnixSetLocale(tag);
 
   /// Background failures the SDK swallowed (queue drains, telemetry beacons).
   Stream<RevnixDiagnostic> get diagnostics => _diagnosticsChannel

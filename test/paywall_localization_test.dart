@@ -126,5 +126,56 @@ void main() {
       expect(parsed.localization.isEmpty, isTrue);
       expect((revnixLocalizeDoc(parsed, 'es').blocks[0] as TextBlock).text, 'Unlock Pro');
     });
+
+    test('defaultLocale on the output is the locale actually resolved', () {
+      final out = revnixLocalizeDoc(doc(), 'es-MX');
+      expect(out.localization.defaultLocale, 'es');
+    });
+  });
+
+  group('link labels', () {
+    test('resolves a language and its regional variants', () {
+      expect(revnixLinkLabels('ur').restore, 'بحال کریں');
+      expect(revnixLinkLabels('ur-PK').terms, 'شرائط');
+    });
+
+    test('Mandarin picks traditional script for TW/HK, simplified elsewhere', () {
+      expect(revnixLinkLabels('zh-Hant-TW').restore, '恢復購買');
+      expect(revnixLinkLabels('zh-TW').restore, '恢復購買');
+      expect(revnixLinkLabels('zh-HK').restore, '恢復購買');
+      expect(revnixLinkLabels('zh-Hans-HK').restore, '恢复购买');
+      expect(revnixLinkLabels('zh-CN').restore, '恢复购买');
+      expect(revnixLinkLabels('zh').restore, '恢复购买');
+    });
+
+    test('legacy and regional tags map through aliases', () {
+      expect(revnixLinkLabels('iw').restore, 'שחזור');
+      expect(revnixLinkLabels('no').restore, 'Gjenopprett');
+      expect(revnixLinkLabels('pt_BR').restore, 'Restaurar');
+    });
+
+    test('falls back to English for anything unknown', () {
+      expect(revnixLinkLabels('xx').restore, 'Restore');
+      expect(revnixLinkLabels(null).restore, 'Restore');
+      expect(revnixLinkLabels('').restore, 'Restore');
+    });
+  });
+
+  group('locale override', () {
+    tearDown(() => RevnixClient.setLocale(null));
+
+    test('setLocale forces the device locale', () {
+      RevnixClient.setLocale('ur');
+      expect(revnixDeviceLocale(), 'ur');
+    });
+
+    test('clearing with null or empty restores the device locale', () {
+      RevnixClient.setLocale('ur');
+      RevnixClient.setLocale(null);
+      expect(revnixDeviceLocale(), isNot('ur'));
+      RevnixClient.setLocale('ur');
+      RevnixClient.setLocale('');
+      expect(revnixDeviceLocale(), isNot('ur'));
+    });
   });
 }
