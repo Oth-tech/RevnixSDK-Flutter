@@ -2,16 +2,19 @@
 
 Demonstrates how to use the revnix_flutter plugin.
 
-## Getting Started
+`lib/main.dart` configures `RevnixClient` with a test publishable key,
+drains the purchase retry queue with `retryPendingPurchases`, registers the
+install, then shows the customer id and `pro` entitlement, first from
+`cachedEntitlements()` (instant, offline-safe) and then from `entitlements()`
+once the network answer lands.
 
-This project is a starting point for a Flutter application.
+## Running it
 
-A few resources to get you started if this is your first Flutter project:
+```
+git submodule update --init
+flutter run
+```
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Put a test publishable key (`rvx_pk_test_…`) and your deployment's
+`baseUrl` in the `RevnixClient.configure` call in `lib/main.dart` before
+running.

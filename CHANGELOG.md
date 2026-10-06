@@ -1,5 +1,13 @@
 ## Unreleased
 
+- **`setPushToken`.** Register the device push token for uninstall
+  measurement (APNs token on iOS, FCM on Android); fire-and-forget, deduped
+  per customer+token. (MS1)
+
+- **`RevnixClient.setLocale(tag)` and localized footer links.** Forces every
+  `RevnixPaywall` built afterwards into that language; the links element's
+  Restore/Terms/Privacy labels now render in 43 languages.
+
 - **iOS privacy manifest.** The plugin now bundles revnix-swift's
   `PrivacyInfo.xcprivacy` (CocoaPods `revnix_flutter_privacy` bundle; SwiftPM
   through the Revnix package) in place of the empty template, which was never
