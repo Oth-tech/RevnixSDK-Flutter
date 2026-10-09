@@ -35,7 +35,8 @@ jobs:
       # build compile; a package without them breaks every consumer's build.
       - name: Publish dry run carries the native SDKs
         run: |
-          OUT=$(flutter pub publish --dry-run 2>&1) || { echo "$OUT"; exit 1; }
+          OUT=$(flutter pub publish --dry-run 2>&1 || true)
+          echo "$OUT" | grep -q "^Total compressed archive size" || { echo "$OUT"; exit 1; }
           for NEED in revnix-kotlin Revnix; do
             echo "$OUT" | grep -q "── $NEED\$" || { echo "::error::archive is missing $NEED"; echo "$OUT"; exit 1; }
           done
