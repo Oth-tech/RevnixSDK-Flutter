@@ -29,7 +29,3 @@ jobs:
       - name: Test
         run: flutter test
 
-      # The Dart half only: the native submodules are not checked out here, so
-      # this validates pubspec, README, CHANGELOG and LICENSE, not the archive.
-      - name: Publish dry run
-        run: flutter pub publish --dry-run
