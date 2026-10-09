@@ -1,4 +1,33 @@
-## Unreleased
+## 1.5.0
+
+First release on pub.dev. Version numbers now follow the Revnix app and the
+other Revnix SDKs.
+
+- **Built-in `purchase(productId)` and `restore()`.** The plugin now runs the
+  store purchase itself through StoreKit 2 / Play Billing, validates the
+  receipt and grants the entitlement; `in_app_purchase` is no longer required.
+  `registerPurchase` stays for apps that keep their own store plugin.
+- **Native SDKs bumped** to revnix-swift 1.5.0 and revnix-kotlin 1.5.0
+  (3779134). What reaches Flutter: on iOS the IDFA goes out with the install
+  report when tracking is authorized; on Android install reports now carry a
+  device key so restored reinstalls are counted. Device integrity evidence is in the pins but
+  not exposed by this plugin yet.
+- **`PlacementResolution.preview`** is now forwarded by both native bridges
+  instead of always reading `false`.
+- **`diagnostics` fires on iOS.** The sink was captured at `configure()`
+  time, before Dart could subscribe, so the stream stayed silent.
+- **Re-`configure()` cleans up.** The previous StoreKit observer is cancelled
+  and the previous Play Billing connector closed instead of leaking.
+- **Unexpected native failures** surface as `RevnixException` code `unknown`
+  with `isRetryable: false`, not as a retryable `network` error.
+- **`setAttributes` rejects booleans** on both platforms with an
+  `ArgumentError` (iOS silently coerced them to `1`/`0`, Android threw).
+- **`diagnostics` and `implicitPaywalls`** are shared broadcast streams, so a
+  second listener's cancel no longer tears down the first.
+- Dart SDK floor is now `^3.8.0` with Flutter 3.32 or later; the unused
+  `plugin_platform_interface` dependency is gone.
+- **README rewritten** as a landing page. The long-form guides moved to
+  [revnix.io/docs/flutter](https://www.revnix.io/docs/flutter).
 
 - **`setPushToken`.** Register the device push token for uninstall
   measurement (APNs token on iOS, FCM on Android); fire-and-forget, deduped

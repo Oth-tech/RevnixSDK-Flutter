@@ -4,7 +4,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'revnix_flutter'
-  s.version          = '0.3.0'
+  s.version          = '1.5.0'
   s.summary          = 'Revnix subscriptions and entitlements for Flutter.'
   s.description      = <<-DESC
 Flutter plugin for Revnix: in-app subscriptions, entitlements, placements
@@ -15,8 +15,7 @@ and purchase registration, bridging the native revnix-swift SDK (StoreKit 2).
   s.author           = { 'Revnix' => 'support@revnix.io' }
   s.source           = { :path => '.' }
   # revnix-swift is the git submodule at ios/revnix_flutter/Revnix, compiled
-  # straight into this module until it ships to CocoaPods — then drop the
-  # second glob and restore:  s.dependency 'Revnix', '~> 0.2'
+  # straight into this module.
   s.source_files = 'revnix_flutter/Sources/revnix_flutter/**/*.swift',
                    'revnix_flutter/Revnix/Sources/Revnix/**/*.swift'
   s.dependency 'Flutter'

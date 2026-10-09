@@ -92,6 +92,18 @@ class RevnixInvalidException extends RevnixException {
       : super('invalid', message, status: status, isRetryable: false);
 }
 
+/// The store has no product with the id passed to `purchase()`. Deliberate.
+class RevnixProductNotFoundException extends RevnixException {
+  const RevnixProductNotFoundException(String message)
+      : super('product_not_found', message, isRetryable: false);
+}
+
+/// StoreKit or Play Billing failed. Retryable only for transient store codes.
+class RevnixStoreException extends RevnixException {
+  const RevnixStoreException(String message, {required super.isRetryable})
+      : super('store_error', message);
+}
+
 /// Rehydrate a native error into its typed Dart equivalent.
 ///
 /// An unrecognised code is treated as NOT retryable: failing closed is the
@@ -124,6 +136,11 @@ RevnixException revnixExceptionFrom(
       return RevnixPurchaseBlockedException(text);
     case 'invalid':
       return RevnixInvalidException(text, status: status);
+    case 'product_not_found':
+      return RevnixProductNotFoundException(text);
+    case 'store_error':
+      return RevnixStoreException(text,
+          isRetryable: details?['isRetryable'] == true);
     default:
       return RevnixException(code ?? 'unknown', text, isRetryable: false);
   }

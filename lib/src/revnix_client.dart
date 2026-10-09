@@ -176,6 +176,22 @@ class RevnixClient {
     return RegisterPurchaseResult.fromMap(map ?? const {});
   }
 
+  /// Opens the store sheet for [productId], validates the receipt on the
+  /// server and grants the entitlement. Returns null when the customer
+  /// cancelled or the purchase is pending (Ask to Buy); throws
+  /// RevnixException on failure.
+  Future<RegisterPurchaseResult?> purchase(String productId) async {
+    final map = await _invoke<Map<Object?, Object?>>(
+      'purchase',
+      {'productId': productId},
+    );
+    return map == null ? null : RegisterPurchaseResult.fromMap(map);
+  }
+
+  /// Re-registers the customer's past purchases on this device. Returns how
+  /// many were registered.
+  Future<int> restore() async => await _invoke<int>('restore') ?? 0;
+
   /// Drain the persistent retry queue. Safe to call on every launch and
   /// foreground — the server dedupes on the purchase key.
   Future<int> retryPendingPurchases() async =>
@@ -250,10 +266,9 @@ class RevnixClient {
   /// [RevnixPaywall] reports [RevnixPaywallEvent.selected],
   /// [RevnixPaywallEvent.purchaseStarted], [RevnixPaywallEvent.restore] and a
   /// no-products [RevnixPaywallEvent.error] for you. The purchase OUTCOME is
-  /// yours: only your app performs the store call, so report
-  /// [RevnixPaywallEvent.purchaseAbandoned] /
-  /// [RevnixPaywallEvent.purchaseFailed] from your own in_app_purchase error
-  /// handling.
+  /// yours: the store call runs in your `onPurchase` handler, so report
+  /// [RevnixPaywallEvent.purchaseAbandoned] when [purchase] returns null and
+  /// [RevnixPaywallEvent.purchaseFailed] when it throws.
   ///
   /// [eventId] is the idempotency key and defaults to [viewId], which caps the
   /// report at one per display per event. Pass one per occurrence — and reuse
@@ -359,8 +374,16 @@ class RevnixClient {
   /// may depend on these. `email` and `username` are reserved (secret key
   /// only), and an attribute your backend already set cannot be changed from
   /// a device.
-  Future<void> setAttributes(Map<String, Object?> attributes) =>
-      _invoke<void>('setAttributes', {'attributes': attributes});
+  Future<void> setAttributes(Map<String, Object?> attributes) {
+    for (final entry in attributes.entries) {
+      final value = entry.value;
+      if (value != null && value is! String && value is! num) {
+        throw ArgumentError.value(
+            value, entry.key, 'must be a String, num, or null');
+      }
+    }
+    return _invoke<void>('setAttributes', {'attributes': attributes});
+  }
 
   /// Forces paywalls to render in [tag]'s language regardless of the
   /// device's, for a host whose in-app language picker differs from the OS
@@ -368,10 +391,13 @@ class RevnixClient {
   static void setLocale(String? tag) => revnixSetLocale(tag);
 
   /// Background failures the SDK swallowed (queue drains, telemetry beacons).
-  Stream<RevnixDiagnostic> get diagnostics => _diagnosticsChannel
+  Stream<RevnixDiagnostic> get diagnostics => _diagnostics;
+
+  late final Stream<RevnixDiagnostic> _diagnostics = _diagnosticsChannel
       .receiveBroadcastStream()
       .map((event) => RevnixDiagnostic.fromMap(
-          (event as Map<Object?, Object?>?) ?? const {}));
+          (event as Map<Object?, Object?>?) ?? const {}))
+      .asBroadcastStream();
 
   /// REV-272: implicit-placement triggers — one event per moment that
   /// resolved to a paywall. Present each however your app presents paywalls;
@@ -389,10 +415,13 @@ class RevnixClient {
   /// — a loop with no way out but force-quitting. The server refuses to serve
   /// back the very same paywall as a backstop, but it cannot see a rule
   /// pointing at a DIFFERENT paywall that points back.
-  Stream<RevnixImplicitTrigger> get implicitPaywalls => _implicitChannel
+  Stream<RevnixImplicitTrigger> get implicitPaywalls => _implicitPaywalls;
+
+  late final Stream<RevnixImplicitTrigger> _implicitPaywalls = _implicitChannel
       .receiveBroadcastStream()
       .map((event) => RevnixImplicitTrigger.fromMap(
-          (event as Map<Object?, Object?>?) ?? const {}));
+          (event as Map<Object?, Object?>?) ?? const {}))
+      .asBroadcastStream();
 
   /// REV-272: hand the SDK the URL that opened your app, from wherever you
   /// already receive it (`uni_links`, `go_router`, `AppLinks`).

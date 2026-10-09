@@ -91,6 +91,7 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.android.billingclient:billing-ktx:8.3.0")
     implementation("com.android.installreferrer:installreferrer:2.2")
+    implementation("com.google.android.play:integrity:1.6.0")
 
     testImplementation("org.jetbrains.kotlin:kotlin-test")
 }

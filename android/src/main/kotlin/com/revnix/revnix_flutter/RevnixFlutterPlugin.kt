@@ -18,7 +18,9 @@ import com.revnix.REVNIX_DEFAULT_SESSION_TIMEOUT_MS
 import com.revnix.android.AndroidDeviceFacts
 import com.revnix.android.AndroidLifecycle
 import com.revnix.android.AndroidStorage
+import com.revnix.android.BillingException
 import com.revnix.android.PlayBillingConnector
+import com.revnix.android.ProductNotFoundException
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
@@ -184,11 +186,7 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
 
         val active = client
         if (active == null) {
-            result.error(
-                "invalid",
-                "RevnixClient.configure() must be called first",
-                mapOf("isRetryable" to false),
-            )
+            notConfigured(result)
             return
         }
 
@@ -210,6 +208,20 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                     }
                     "registerPurchase" ->
                         result.success(map(active.registerPurchase(purchaseInput(call))))
+                    "purchase" -> {
+                        val connector = billing ?: return@launch notConfigured(result)
+                        val foreground = activity ?: return@launch result.error(
+                            "store_error",
+                            "no foreground activity",
+                            mapOf("isRetryable" to true),
+                        )
+                        val productId = call.argument<String>("productId").orEmpty()
+                        result.success(connector.purchase(foreground, productId)?.let(::map))
+                    }
+                    "restore" -> {
+                        val connector = billing ?: return@launch notConfigured(result)
+                        result.success(connector.restore())
+                    }
                     "retryPendingPurchases" ->
                         result.success(active.retryPendingPurchases())
                     "pendingPurchaseCount" ->
@@ -349,15 +361,25 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             } catch (err: RevnixError) {
                 val (code, details) = describe(err)
                 result.error(code, err.message, details)
+            } catch (err: ProductNotFoundException) {
+                result.error("product_not_found", err.message, mapOf("isRetryable" to false))
+            } catch (err: BillingException) {
+                result.error("store_error", err.message, mapOf("isRetryable" to err.isRetryable))
             } catch (err: Throwable) {
                 result.error(
-                    "network",
+                    "unknown",
                     err.message ?: "unexpected failure",
-                    mapOf("isRetryable" to true),
+                    mapOf("isRetryable" to false),
                 )
             }
         }
     }
+
+    private fun notConfigured(result: MethodChannel.Result) = result.error(
+        "invalid",
+        "RevnixClient.configure() must be called first",
+        mapOf("isRetryable" to false),
+    )
 
     private fun configure(call: MethodCall, result: MethodChannel.Result) {
         val apiKey = call.argument<String>("apiKey")
@@ -449,6 +471,7 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         // clients watching the foreground — every return would then mint two
         // session_start triggers and emit two implicitPaywall events.
         client?.close()
+        billing?.close()
         client = created
         // Owns connection, purchase replay, acknowledgement, and the queue drain.
         billing = PlayBillingConnector.start(context, created)
@@ -549,6 +572,7 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         // experiment would silently corrupt A/B attribution — so this is the
         // raw wire value too, same as `paywall`; null stays null.
         "experiment" to bridgeValue(resolution.experimentJson),
+        "preview" to resolution.preview,
     )
 
     /** Loose JSON → StandardMessageCodec-safe values (maps/lists/primitives). */

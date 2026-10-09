@@ -1,4 +1,5 @@
 import Flutter
+import StoreKit
 import UIKit
 // revnix-swift is the git submodule at ios/revnix_flutter/Revnix. Under Swift Package
 // Manager it is its own module (imported here); under CocoaPods the podspec
@@ -153,6 +154,20 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
                 case "registerPurchase":
                     let input = try Self.purchaseInput(args)
                     result(Self.map(try await client.registerPurchase(input)))
+                case "purchase":
+                    let productId = args["productId"] as? String ?? ""
+                    guard let product = try await Product.products(for: [productId]).first else {
+                        result(
+                            FlutterError(
+                                code: "product_not_found",
+                                message: "No store product \"\(productId)\"",
+                                details: ["isRetryable": false]))
+                        return
+                    }
+                    result(try await RevnixStoreKit.purchase(product, client: client).map(Self.map))
+                case "restore":
+                    try? await AppStore.sync()
+                    result(await RevnixStoreKit.restore(client: client))
                 case "retryPendingPurchases":
                     result(await client.retryPendingPurchases())
                 case "pendingPurchaseCount":
@@ -286,12 +301,22 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
                 }
             } catch let error as RevnixError {
                 result(Self.flutterError(error))
+            } catch StoreKitError.networkError(let underlying) {
+                result(
+                    FlutterError(
+                        code: "store_error", message: "\(underlying)",
+                        details: ["isRetryable": true]))
+            } catch let error where error is StoreKitError || error is Product.PurchaseError {
+                result(
+                    FlutterError(
+                        code: "store_error", message: "\(error)",
+                        details: ["isRetryable": false]))
             } catch {
                 result(
                     FlutterError(
-                        code: "network",
+                        code: "unknown",
                         message: String(describing: error),
-                        details: ["isRetryable": true]))
+                        details: ["isRetryable": false]))
             }
         }
     }
@@ -313,7 +338,6 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
             return TimeInterval(ms) / 1000
         }
 
-        let sink = diagnosticsSink
         // REV-272: captured weakly-by-closure through a local, the same shape
         // the diagnostics sink uses — the sink is replaced when Dart
         // re-subscribes, so read it off the plugin at fire time rather than
@@ -360,9 +384,9 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
                 timeout: millis("timeoutMs", 10),
                 offlineMaxCacheAge: millis("offlineMaxCacheAgeMs", 14 * 24 * 3600),
                 entitlementsTTL: millis("entitlementsTtlMs", 30),
-                onDiagnostic: { event in
+                onDiagnostic: { [weak self] event in
                     DispatchQueue.main.async {
-                        sink?(["op": event.op, "message": event.message])
+                        self?.diagnosticsSink?(["op": event.op, "message": event.message])
                     }
                 },
                 // REV-268: revnix-swift detects the device facts; Dart may
@@ -392,6 +416,7 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
         // Transactions that complete outside a Dart-initiated purchase —
         // renewals, Ask to Buy approvals, another device — still have to reach
         // Revnix, so the observer belongs here rather than in Dart.
+        observer?.cancel()
         observer = RevnixStoreKit.startObserving(client: client)
         Task { await client.retryPendingPurchases() }
         result(nil)
@@ -501,6 +526,7 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
             // experiment would silently corrupt A/B attribution — so this is
             // the raw wire value too, same as `paywall`; nil stays nil.
             "experiment": resolution.experimentJSON.map(Self.bridgeValue),
+            "preview": resolution.preview,
         ]
     }
 
