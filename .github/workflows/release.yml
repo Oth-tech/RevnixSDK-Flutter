@@ -1,0 +1,297 @@
+# Release the Revnix Flutter plugin.
+#
+# Dispatched by revnix-app's "Release SDKs" workflow on every merge to its
+# main, and runnable by hand. One run = one version: it moves the native
+# submodules to upstream main, moves `## Unreleased` in CHANGELOG.md into a
+# version entry, bumps pubspec.yaml and ios/revnix_flutter.podspec, lands that
+# through a pull request (the org ruleset gives main merge commits only and no
+# direct pushes, so there is no other way in), then tags the merge commit and
+# cuts a GitHub release.
+#
+# pub.dev publishing happens in publish.yml, from the tag.
+
+name: Release
+run-name: "Release ${{ inputs.run_key || format('manual-{0}', github.run_id) }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump. auto reads the Unreleased section of CHANGELOG.md."
+        type: choice
+        options: [auto, major, minor, patch]
+        default: auto
+      version:
+        description: "Exact next version (x.y.z, above the current one). Empty = bump."
+        type: string
+        default: ""
+      app_sha:
+        description: "revnix-app commit this release rides on (recorded in the changelog)."
+        type: string
+        default: ""
+      run_key:
+        description: "Caller's correlation key; becomes the run name so the caller can find this run."
+        type: string
+        default: ""
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+
+# One release at a time. A second dispatch queues behind the first so two
+# runs can never bump from the same base version.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          submodules: recursive
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Analyze and test main before touching it
+        run: flutter pub get && flutter analyze && flutter test
+
+      # A previous run may have merged the bump and then failed before tagging.
+      # main is then one version ahead of the tags. Release that version
+      # instead of bumping past it and leaving a hole in the sequence.
+      - name: Is main already ahead of the tags?
+        id: pending
+        run: |
+          CURRENT=$(sed -n 's/^version:[[:space:]]*\([^[:space:]]*\).*/\1/p' pubspec.yaml)
+          if ! git ls-remote --exit-code --tags origin "refs/tags/v*" >/dev/null 2>&1; then
+            echo "No release tags yet; the first release bumps from $CURRENT."
+            echo "pending=false" >> "$GITHUB_OUTPUT"
+          elif git ls-remote --exit-code --tags origin "refs/tags/v$CURRENT" >/dev/null 2>&1; then
+            echo "v$CURRENT is tagged; a normal release follows."
+            echo "pending=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::$CURRENT is on main but not tagged — releasing it instead of bumping."
+            scripts/release.sh --notes-for "$CURRENT" --notes-out "$RUNNER_TEMP/release-notes.md"
+            {
+              echo "pending=true"
+              echo "version=$CURRENT"
+              echo "sha=$(git rev-parse HEAD)"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Has the code moved since the last release?
+        if: steps.pending.outputs.pending != 'true'
+        id: changed
+        run: |
+          CURRENT=$(sed -n 's/^version:[[:space:]]*\([^[:space:]]*\).*/\1/p' pubspec.yaml)
+          if git rev-parse -q --verify "refs/tags/v$CURRENT" >/dev/null; then
+            if git diff --quiet "v$CURRENT" HEAD -- . ':(exclude).github' ':(exclude)*.md'; then
+              CHANGED=false
+            else
+              CHANGED=true
+            fi
+            echo "Since v$CURRENT: changed=$CHANGED"
+          else
+            CHANGED=true
+            echo "No tag v$CURRENT to compare against; treating the tree as changed."
+          fi
+          echo "changed=$CHANGED" >> "$GITHUB_OUTPUT"
+
+      - name: Move the native submodules to upstream main
+        if: steps.pending.outputs.pending != 'true'
+        id: natives
+        run: |
+          IOS_BEFORE=$(git -C ios/revnix_flutter/Revnix rev-parse HEAD)
+          ANDROID_BEFORE=$(git -C android/revnix-kotlin rev-parse HEAD)
+          git submodule update --remote --init --recursive
+          IOS_AFTER=$(git -C ios/revnix_flutter/Revnix rev-parse HEAD)
+          ANDROID_AFTER=$(git -C android/revnix-kotlin rev-parse HEAD)
+          NOTE=""
+          if [ "$IOS_BEFORE" != "$IOS_AFTER" ] || [ "$ANDROID_BEFORE" != "$ANDROID_AFTER" ]; then
+            NOTE="Native SDKs: RevnixSDK-iOS ${IOS_BEFORE:0:7} → ${IOS_AFTER:0:7}, RevnixSDK-Android ${ANDROID_BEFORE:0:7} → ${ANDROID_AFTER:0:7}."
+            echo "$NOTE"
+          else
+            echo "Submodule pins already at upstream main."
+          fi
+          echo "note=$NOTE" >> "$GITHUB_OUTPUT"
+          echo "ios=$IOS_AFTER" >> "$GITHUB_OUTPUT"
+          echo "android=$ANDROID_AFTER" >> "$GITHUB_OUTPUT"
+
+      - name: Decide whether to release
+        id: gate
+        env:
+          PENDING: ${{ steps.pending.outputs.pending }}
+          CHANGED: ${{ steps.changed.outputs.changed }}
+          NATIVES_NOTE: ${{ steps.natives.outputs.note }}
+          BUMP: ${{ inputs.bump }}
+        run: |
+          echo "current=$(sed -n 's/^version:[[:space:]]*\([^[:space:]]*\).*/\1/p' pubspec.yaml)" >> "$GITHUB_OUTPUT"
+          if [ "$PENDING" = "true" ] || [ "$BUMP" != "auto" ] || [ "$CHANGED" = "true" ] || [ -n "$NATIVES_NOTE" ]; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Nothing changed since the last release; skipping."
+          fi
+
+      - name: Decide and apply the next version
+        if: steps.pending.outputs.pending != 'true' && steps.gate.outputs.release == 'true'
+        id: version
+        env:
+          BUMP: ${{ inputs.bump }}
+          VERSION: ${{ inputs.version }}
+          APP_SHA: ${{ inputs.app_sha }}
+          NATIVES_NOTE: ${{ steps.natives.outputs.note }}
+        run: |
+          ARGS=()
+          [ -n "$NATIVES_NOTE" ] && ARGS+=(--note "$NATIVES_NOTE")
+          scripts/release.sh \
+            --bump "$BUMP" \
+            --version "$VERSION" \
+            --app-sha "$APP_SHA" \
+            --changed "${{ steps.changed.outputs.changed }}" \
+            --notes-out "$RUNNER_TEMP/release-notes.md" \
+            "${ARGS[@]}"
+
+      - name: Refuse to reuse a version that already exists
+        if: steps.pending.outputs.pending != 'true' && steps.gate.outputs.release == 'true'
+        env:
+          NEXT: ${{ steps.version.outputs.next }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/v$NEXT" >/dev/null 2>&1; then
+            echo "::error::Tag v$NEXT already exists. Bump pubspec.yaml past it and re-run."
+            exit 1
+          fi
+
+      # release.sh moves the pubspec and the podspec together; prove it before
+      # the bump goes anywhere near main.
+      - name: The pubspec and the podspec agree
+        if: steps.pending.outputs.pending != 'true' && steps.gate.outputs.release == 'true'
+        env:
+          NEXT: ${{ steps.version.outputs.next }}
+        run: |
+          PUB=$(sed -n 's/^version:[[:space:]]*\([^[:space:]]*\).*/\1/p' pubspec.yaml)
+          POD=$(sed -n "s/^[[:space:]]*s\.version[[:space:]]*=[[:space:]]*'\([^']*\)'.*/\1/p" ios/revnix_flutter.podspec)
+          if [ "$PUB" != "$NEXT" ] || [ "$POD" != "$NEXT" ]; then
+            echo "::error::expected $NEXT everywhere, got pubspec=$PUB podspec=$POD."
+            exit 1
+          fi
+
+      - name: Analyze and test the bumped tree
+        if: steps.pending.outputs.pending != 'true' && steps.gate.outputs.release == 'true'
+        run: flutter pub get && flutter analyze && flutter test
+
+      - name: Land the bump through a pull request (main takes merge commits only)
+        if: steps.pending.outputs.pending != 'true' && steps.gate.outputs.release == 'true'
+        id: land
+        env:
+          NEXT: ${{ steps.version.outputs.next }}
+          SUMMARY: ${{ steps.version.outputs.summary }}
+        run: |
+          BRANCH="release/v$NEXT"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add -A
+          git commit -m "Release $NEXT" -m "$SUMMARY"
+          git push origin "$BRANCH"
+          PR_URL=$(gh pr create --base main --head "$BRANCH" \
+            --title "Release $NEXT" --body-file "$RUNNER_TEMP/release-notes.md")
+          echo "Opened $PR_URL"
+          # Mergeability is computed asynchronously; give it a few tries.
+          MERGED=""
+          for i in 1 2 3 4 5 6; do
+            if gh pr merge "$PR_URL" --merge --delete-branch; then MERGED=1; break; fi
+            sleep 10
+          done
+          if [ -z "$MERGED" ]; then
+            echo "::error::Could not merge $PR_URL — nothing was released."
+            exit 1
+          fi
+          git fetch origin main
+          git checkout -q origin/main
+          LANDED=$(sed -n 's/^version:[[:space:]]*\([^[:space:]]*\).*/\1/p' pubspec.yaml)
+          if [ "$LANDED" != "$NEXT" ]; then
+            echo "::error::main carries $LANDED after the merge, expected $NEXT."
+            exit 1
+          fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "pr=$PR_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve what to release
+        if: steps.gate.outputs.release == 'true'
+        id: pub
+        env:
+          PENDING: ${{ steps.pending.outputs.pending }}
+        run: |
+          if [ "$PENDING" = "true" ]; then
+            echo "next=${{ steps.pending.outputs.version }}" >> "$GITHUB_OUTPUT"
+            echo "sha=${{ steps.pending.outputs.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "next=${{ steps.version.outputs.next }}" >> "$GITHUB_OUTPUT"
+            echo "sha=${{ steps.land.outputs.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # A tag pushed with GITHUB_TOKEN does not start other workflows, so
+      # publish.yml is dispatched on the tag explicitly.
+      - name: Tag, release and hand off to publish.yml
+        if: steps.gate.outputs.release == 'true'
+        env:
+          NEXT: ${{ steps.pub.outputs.next }}
+          SHA: ${{ steps.pub.outputs.sha }}
+        run: |
+          # An annotated tag needs a committer identity. The "land" step sets
+          # one, but that step is skipped on the "main is already ahead of the
+          # tags" path — which is exactly the run that must not fail here.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "v$NEXT" -m "revnix_flutter $NEXT" "$SHA"
+          git push origin "v$NEXT"
+          gh release create "v$NEXT" --target "$SHA" --title "revnix_flutter $NEXT" \
+            --notes-file "$RUNNER_TEMP/release-notes.md"
+          gh workflow run publish.yml --ref "v$NEXT"
+
+      - name: Summary
+        if: always()
+        env:
+          RELEASE: ${{ steps.gate.outputs.release }}
+          GATE_CURRENT: ${{ steps.gate.outputs.current }}
+          CURRENT: ${{ steps.version.outputs.current }}
+          NEXT: ${{ steps.pub.outputs.next }}
+          LEVEL: ${{ steps.version.outputs.level }}
+          LOCKSTEP: ${{ steps.version.outputs.lockstep }}
+          PR: ${{ steps.land.outputs.pr }}
+          PENDING: ${{ steps.pending.outputs.pending }}
+          APP_SHA: ${{ inputs.app_sha }}
+          IOS: ${{ steps.natives.outputs.ios }}
+          ANDROID: ${{ steps.natives.outputs.android }}
+        run: |
+          {
+            if [ "$RELEASE" = "false" ]; then
+              echo "## revnix_flutter: no release"
+              echo ""
+              echo "- no changes since v${GATE_CURRENT:-?}, skipped"
+            else
+              echo "## revnix_flutter ${NEXT:-?}"
+              echo ""
+              if [ "$PENDING" = "true" ]; then
+                echo "- released the version already on main (a previous run merged it but did not tag)"
+              else
+                echo "- from ${CURRENT:-?} (${LEVEL:-?} bump, lockstep=${LOCKSTEP:-?})"
+              fi
+              [ -n "$PR" ] && echo "- release PR: $PR"
+              [ -n "$IOS" ] && echo "- natives: RevnixSDK-iOS ${IOS:0:7}, RevnixSDK-Android ${ANDROID:0:7}"
+              [ -n "$APP_SHA" ] && echo "- revnix-app: $APP_SHA"
+              echo "- pub.dev: publish.yml publishes tag v${NEXT:-?}"
+            fi
+            echo "- status: ${{ job.status }}"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -14,6 +14,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - uses: subosito/flutter-action@v2
         with:
@@ -29,3 +31,11 @@ jobs:
       - name: Test
         run: flutter test
 
+      # The archive must carry the native sources the podspec and gradle
+      # build compile; a package without them breaks every consumer's build.
+      - name: Publish dry run carries the native SDKs
+        run: |
+          OUT=$(flutter pub publish --dry-run 2>&1) || { echo "$OUT"; exit 1; }
+          for NEED in revnix-kotlin Revnix; do
+            echo "$OUT" | grep -q "── $NEED\$" || { echo "::error::archive is missing $NEED"; echo "$OUT"; exit 1; }
+          done
