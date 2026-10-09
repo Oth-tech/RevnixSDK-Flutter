@@ -51,15 +51,14 @@ class RevnixTimeoutException extends RevnixException {
 
 /// HTTP 429. Retryable with backoff.
 class RevnixRateLimitException extends RevnixException {
-  const RevnixRateLimitException(String message, {int? retryAfterMs})
-      : super('rate_limited', message,
-            status: 429, retryAfterMs: retryAfterMs, isRetryable: true);
+  const RevnixRateLimitException(String message, {super.retryAfterMs})
+      : super('rate_limited', message, status: 429, isRetryable: true);
 }
 
 /// HTTP 5xx. Retryable.
 class RevnixServerException extends RevnixException {
-  const RevnixServerException(String message, {int? status})
-      : super('server', message, status: status, isRetryable: true);
+  const RevnixServerException(String message, {super.status})
+      : super('server', message, isRetryable: true);
 }
 
 /// A 200 whose body was not the expected JSON (captive portal). Retryable.
@@ -70,8 +69,8 @@ class RevnixBadResponseException extends RevnixException {
 
 /// HTTP 401/403 — missing, revoked, or wrong-kind key. Deliberate.
 class RevnixAuthException extends RevnixException {
-  const RevnixAuthException(String message, {int? status})
-      : super('auth', message, status: status, isRetryable: false);
+  const RevnixAuthException(String message, {super.status})
+      : super('auth', message, isRetryable: false);
 }
 
 /// HTTP 404 — unknown route or resource. Deliberate.
@@ -88,8 +87,8 @@ class RevnixPurchaseBlockedException extends RevnixException {
 
 /// 400 validation, 413 payload cap, and other deliberate refusals.
 class RevnixInvalidException extends RevnixException {
-  const RevnixInvalidException(String message, {int? status})
-      : super('invalid', message, status: status, isRetryable: false);
+  const RevnixInvalidException(String message, {super.status})
+      : super('invalid', message, isRetryable: false);
 }
 
 /// The store has no product with the id passed to `purchase()`. Deliberate.
