@@ -1,3 +1,7 @@
+## Unreleased
+
+- Release automation: `release.yml` lands the version bump and tags it; `publish.yml` publishes the tag to pub.dev through automated publishing.
+
 ## 1.5.0
 
 First release on pub.dev. Version numbers now follow the Revnix app and the

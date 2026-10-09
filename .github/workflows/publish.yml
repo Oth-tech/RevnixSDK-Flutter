@@ -1,0 +1,77 @@
+# Publish a release tag to pub.dev through automated publishing (OIDC, no
+# secrets). pub.dev only accepts the upload when it comes from this repository
+# on a tag matching `v{{version}}`.
+#
+# release.yml dispatches this on the tag it just pushed; a tag pushed by hand
+# starts it through `push`.
+
+name: Publish
+
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Test
+        run: flutter test
+
+      - name: The tag matches pubspec.yaml
+        run: |
+          VERSION=$(sed -n 's/^version:[[:space:]]*\([^[:space:]]*\).*/\1/p' pubspec.yaml)
+          if [ "$GITHUB_REF_TYPE" != "tag" ] || [ "$GITHUB_REF_NAME" != "v$VERSION" ]; then
+            echo "::error::ref $GITHUB_REF_NAME ($GITHUB_REF_TYPE) is not the tag v$VERSION — refusing to publish."
+            exit 1
+          fi
+
+      # The package must carry the native sources the podspec and gradle build
+      # compile; a checkout without submodules would publish an empty native
+      # half and every consumer's build would break.
+      #
+      # The dry run prints a tree, not paths; the sed/awk pair rebuilds each
+      # file's path from its depth. It exits 65 on any warning, hence `|| true`.
+      - name: Check the package carries the native SDKs
+        run: |
+          LIST=$( (flutter pub publish --dry-run 2>&1 || true) \
+            | sed -e 's/│   /    /g' -e 's/├── /+ /' -e 's/└── /+ /' \
+            | awk '/^ *\+ / {
+                match($0, /^ */); d = RLENGTH / 4
+                name = substr($0, RLENGTH + 3); sub(/ \([^)]*\)$/, "", name)
+                path[d] = name; p = path[0]
+                for (i = 1; i <= d; i++) p = p "/" path[i]
+                print p
+              }')
+          for NEED in "ios/revnix_flutter/Revnix/Sources/Revnix/" "android/revnix-kotlin/revnix-core/src/main/" "android/revnix-kotlin/revnix-android/src/main/"; do
+            if ! echo "$LIST" | grep -q "^$NEED"; then
+              echo "::error::flutter pub publish would not include $NEED — refusing to publish."
+              exit 1
+            fi
+          done
+          echo "$LIST" | wc -l | xargs echo "files in package:"
+
+      # setup-dart exchanges this job's OIDC token for a pub.dev token and
+      # registers it with pub. It runs last so the short-lived token is fresh.
+      - uses: dart-lang/setup-dart@v1
+
+      - name: Publish to pub.dev
+        run: flutter pub publish --force
