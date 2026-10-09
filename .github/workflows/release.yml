@@ -95,7 +95,7 @@ jobs:
         run: |
           CURRENT=$(sed -n 's/^version:[[:space:]]*\([^[:space:]]*\).*/\1/p' pubspec.yaml)
           if git rev-parse -q --verify "refs/tags/v$CURRENT" >/dev/null; then
-            if git diff --quiet "v$CURRENT" HEAD -- . ':(exclude).github' ':(exclude)*.md'; then
+            if git diff --quiet "v$CURRENT" HEAD -- . ':(exclude).github' ':(exclude)*.md' ':(exclude)scripts'; then
               CHANGED=false
             else
               CHANGED=true
@@ -117,7 +117,8 @@ jobs:
           IOS_AFTER=$(git -C ios/revnix_flutter/Revnix rev-parse HEAD)
           ANDROID_AFTER=$(git -C android/revnix-kotlin rev-parse HEAD)
           NOTE=""
-          if [ "$IOS_BEFORE" != "$IOS_AFTER" ] || [ "$ANDROID_BEFORE" != "$ANDROID_AFTER" ]; then
+          moved() { ! git -C "$1" diff --quiet "$2" "$3" -- Sources Package.swift '*/src'; }
+          if moved ios/revnix_flutter/Revnix "$IOS_BEFORE" "$IOS_AFTER" || moved android/revnix-kotlin "$ANDROID_BEFORE" "$ANDROID_AFTER"; then
             NOTE="Native SDKs: RevnixSDK-iOS ${IOS_BEFORE:0:7} → ${IOS_AFTER:0:7}, RevnixSDK-Android ${ANDROID_BEFORE:0:7} → ${ANDROID_AFTER:0:7}."
             echo "$NOTE"
           else
