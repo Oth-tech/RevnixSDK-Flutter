@@ -343,12 +343,6 @@ class _RevnixPaywallState extends State<RevnixPaywall> {
 
   // ——— REV-263: the interaction vocabulary ———
   //
-  // The widget reports what it genuinely OBSERVES: the selection change, the
-  // CTA press, the restore press, and an offering that arrived with nothing to
-  // sell. It never reports the purchase OUTCOME — the store call happens in
-  // the host, so only the host knows whether the customer cancelled at the
-  // sheet or the payment was refused. Report those with
-  // `client.logPaywallEvent(...)` from your own in_app_purchase handling.
   void _report(
     RevnixPaywallEvent event, {
     String? productId,

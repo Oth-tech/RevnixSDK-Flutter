@@ -1,459 +1,178 @@
-# revnix_flutter
+<p align="center">
+  <a href="https://www.revnix.io"><img src="https://www.revnix.io/sdk/logo.png" width="360" alt="Revnix"></a>
+</p>
 
-Flutter plugin for [Revnix](https://revnix.io), subscriptions and
-entitlements, wrapping the native SDKs rather than reimplementing them.
+<h1 align="center">Subscriptions, Paywalls and Attribution<br>for Your Flutter App</h1>
 
-- **iOS** → [`RevnixSDK-iOS`](https://github.com/Oth-tech/RevnixSDK-iOS) (StoreKit 2)
-- **Android** → [`RevnixSDK-Android`](https://github.com/Oth-tech/RevnixSDK-Android) (Play Billing 8)
+<p align="center">
+  <a href="https://pub.dev/packages/revnix_flutter"><img src="https://img.shields.io/pub/v/revnix_flutter?color=2f6fe0&logo=dart" alt="pub version"></a>
+  <a href="https://github.com/Oth-tech/RevnixSDK-Flutter/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-2f6fe0" alt="license"></a>
+  <img src="https://img.shields.io/badge/platforms-iOS%20%7C%20Android-2f6fe0?logo=flutter&logoColor=white" alt="platforms">
+</p>
 
-> Those SDKs are not on CocoaPods / Maven Central yet, so this plugin carries
-> them as **git submodules** (`ios/revnix_flutter/Revnix`, `android/revnix-kotlin`) and
-> compiles their sources straight into the plugin. Clone with
-> `git clone --recurse-submodules` (or run `git submodule update --init`
-> in an existing checkout). To pick up a native fix, bump the submodule pin;
-> never edit the native sources from here.
+<p align="center">
+  <a href="https://www.revnix.io"><b>Website</b></a> •
+  <a href="https://www.revnix.io/docs/flutter"><b>Docs</b></a> •
+  <a href="https://www.revnix.io/docs/flutter/reference"><b>API Reference</b></a>
+</p>
 
-## Why a wrapper and not a Dart client
+![Revnix: subscriptions, paywalls and attribution for mobile apps](https://www.revnix.io/sdk/hero.png)
 
-The resilience policy (offline cache, retry queue, kill-switch discipline) is
-a *product contract*, not an implementation detail. Reimplementing it per
-platform means one more place for it to silently rot. It already happened once:
-the Swift port dropped a TTL bypass and broke post-purchase unlock until a test
-caught it.
+Revnix SDK makes in-app subscriptions, paywalls and attribution for Flutter fast and easy. One plugin buys through StoreKit 2 and Google Play Billing, validates the receipt on the server and unlocks the entitlement. No separate IAP plugin.
 
-So the policy lives in the native SDKs, where it is tested (in
-RevnixSDK-iOS and `revnix-core`). This plugin's job is to not lose it in
-translation.
+## Table of Contents
+
+- [Why Revnix?](#why-revnix)
+- [Getting Started](#getting-started)
+- [Quick start](#quick-start)
+- [Purchases and entitlements without server code](#purchases-and-entitlements-without-server-code)
+- [Paywalls that update without app releases](#paywalls-that-update-without-app-releases)
+- [A/B tests with a built-in holdout](#ab-tests-with-a-built-in-holdout)
+- [Attribution and deep links](#attribution-and-deep-links)
+- [Real-time analytics for your Flutter app](#real-time-analytics-for-your-flutter-app)
+- [Requirements](#requirements)
+- [Documentation](#documentation)
+- [Migrating from another SDK](#migrating-from-another-sdk)
+- [Support](#support)
+- [License](#license)
+
+## Why Revnix?
+
+- [Purchases in one call](https://www.revnix.io/docs/flutter/make-purchases). `purchase()` opens the App Store or Google Play sheet, validates the receipt on the server and grants the entitlement. No IAP plugin, no server code.
+- [Entitlements that work offline](https://www.revnix.io/docs/flutter/check-entitlements). Entitlement checks are cached on device, so a user who paid stays unlocked without a network.
+- [Remote paywalls](https://www.revnix.io/docs/paywall-builder). Design paywalls in the dashboard, pick from 250 templates and ship copy, prices and layout changes without an app release.
+- [A/B tests and holdouts](https://www.revnix.io/docs/ab-tests). Split a placement between variants, measure revenue per user with credible intervals and ship the winner from the dashboard.
+- [Attribution and deep links](https://www.revnix.io/docs/attribution). Install attribution, deferred deep links, Apple Search Ads, Google Ads and MMP forwarding, all from the same plugin.
+- [Integrations](https://www.revnix.io/docs/integrations). Send subscription events to analytics, attribution and messaging tools, or to your own server through signed webhooks.
+- [Real-time analytics](https://www.revnix.io/docs/analytics). Revenue, MRR, LTV, ROAS, cohorts and funnels for iOS and Android, filtered by store, product, channel and campaign.
+
+## Getting Started
+
+```sh
+flutter pub add revnix_flutter
+```
+
+The native Swift and Kotlin SDKs ship inside the plugin and compile with your app. There is nothing else to add on iOS or Android.
+
+Read the [installation guide](https://www.revnix.io/docs/flutter/installation) and [configuration reference](https://www.revnix.io/docs/flutter/configuration) to set up the plugin.
 
 ## Quick start
 
 ```dart
 import 'package:revnix_flutter/revnix_flutter.dart';
 
+// 1. Configure once at app start
 final revnix = await RevnixClient.configure(
-  apiKey: 'rvx_pk_live_…',            // publishable key only
-  baseUrl: 'https://your-deployment.convex.site',
+  apiKey: 'rvx_pk_live_…',
+  baseUrl: 'https://<your-deployment>.convex.site',
 );
-
-// Safe on every launch; the server dedupes on the purchase key.
 await revnix.retryPendingPurchases();
 await revnix.registerInstall();
 
-// Gate. Never throws; a transient failure answers from the cache; a deliberate
-// rejection, unknown entitlement, or unreachable with nothing cached, means locked.
+// 2. Buy: opens the store sheet, validates the receipt, grants the entitlement
+final result = await revnix.purchase('pro.monthly');
+if (result != null) await revnix.waitForEntitlements(result.seq);
+
+// 3. Check access anywhere
 if (await revnix.isEntitled('pro')) {
-  // …
+  // unlocked
 }
 ```
 
-Use a **publishable** key (`rvx_pk_…`). Secret keys must never ship in a binary,
-so `identify`/`alias` are deliberately not methods here; proxy them from your
-server.
-
-## Registering purchases
-
-```dart
-// Apple: send the JWS or the claim is only provisional.
-await revnix.registerPurchase(RegisterPurchaseInput(
-  source: RevnixStore.apple,
-  token: originalTransactionId,
-  productId: 'pro.monthly',
-  transactionId: transactionId,
-  signedTransactionInfo: jwsRepresentation,
-));
-
-// Google: the purchase token is BOTH the token and the transaction id.
-final result = await revnix.registerPurchase(RegisterPurchaseInput.google(
-  purchaseToken: purchase.verificationData.serverVerificationData,
-  productId: 'pro.monthly',
-));
-
-// Read-your-writes: unlock without polling yourself.
-await revnix.waitForEntitlements(result.seq);
-```
-
-`result.provisional` is normally `true` on Android: a Play purchase carries no
-device-side proof, so Revnix corroborates it server-side via RTDN. It is `false`
-on iOS, where the JWS verifies against Apple's chain.
-
-## A/B experiments
-
-`resolvePlacement` sends the customer id so the server can pin a sticky
-variant when a running experiment covers the placement. The served
-offering/paywall are already the variant's; render what you get. The
-assignment itself is attribution metadata:
-
-```dart
-final resolution = await revnix.resolvePlacement('onboarding');
-// Null when no running experiment covers this placement.
-final experiment = resolution.experiment;
-if (experiment != null) {
-  analytics.log('paywall_variant', {
-    'experiment': experiment.key,
-    'variant': experiment.variantId,
-  });
-}
-```
-
-### Targeting: `setAttributes`
-
-A test can be narrowed to an *audience*: conditions over customer attributes.
-`setAttributes` supplies the facts those conditions read, which for a
-mobile-only app is the only place they exist:
-
-```dart
-await revnix.setAttributes({
-  'country': 'US',
-  'app_version': '4.2.0',
-  'lifetime_orders': 3,
-  'stale_key': null,   // null deletes the key
-});
-```
-
-Values must be `String`, `num`, or `null`. This awaits the write and throws on
-failure, unlike the fire-and-forget beacons, because the next
-`resolvePlacement` may depend on it. Set an audience's attributes *before* the
-first resolve on a covered placement; eligibility is checked at that resolve.
-`email` and `username` are reserved (secret key, from your server), and an
-attribute your backend already set cannot be changed from a device; both
-reject the whole batch rather than applying part of it.
-
-## Paywall UI
-
-`RevnixPaywall` renders a dashboard-published paywall config as a full screen (pure Dart over Flutter's own widgets), kept in lockstep with the dashboard's
-paywall-builder preview and the React Native renderer. The config decides
-layout, copy, accent, and badge; **you** supply package titles and localized
-prices from the store, so the display never disagrees with the charge.
-
-```dart
-final resolution = await revnix.resolvePlacement('onboarding');
-final paywall = resolution.paywall!;
-
-RevnixPaywall(
-  config: paywall.config,
-  packages: [
-    // priceLabel must be the store's localized price string.
-    RevnixPaywallPackage(packageId: 'monthly', title: 'Monthly', priceLabel: r'$9.99'),
-    RevnixPaywallPackage(packageId: 'annual', title: 'Annual', priceLabel: r'$59.99'),
-  ],
-  onPurchase: (packageId) { /* run the store purchase, then registerPurchase */ },
-  onRestore: () { /* restore purchases */ },
-  // One paywall.viewed per mount: the funnel's "Paywall displayed" stage.
-  client: revnix,
-  placementKey: 'onboarding',
-  paywallId: paywall.paywallId,
-)
-```
-
-Selection is controlled (`selectedPackageId` + `onSelectPackage`) or managed
-internally; `loading: true` turns the CTA into a spinner. The plugin adds no
-`url_launcher` dependency, so a dashboard-configured Terms/Privacy URL is
-handed to your `onOpenUrl` callback to open; an explicit `onTerms`/`onPrivacy`
-handler always wins over the config URL.
-
-A designed paywall picks its language from the device.
-`RevnixClient.setLocale('de')` forces every `RevnixPaywall` built afterwards
-into that language (null clears it); `RevnixPaywall(locale: ...)` overrides
-it for one widget.
-
-### Reporting the whole life of a display
-
-Passing `client:` reports the impression. `RevnixPaywall` also reports the
-close and most interactions; rendering your own paywall, these are yours:
-
-| Call | What it does |
-|---|---|
-| `logPaywallShown(…) → Future<String?>` | The impression beacon, resolving with the `viewId` it minted. |
-| `logPaywallClosed(viewId, …)` | Ends that display. Idempotent per view id, so a retry or a double-dismiss cannot count two. Without it a funnel knows how many saw the paywall, not how many left without buying. |
-| `logPaywallEvent(event, viewId, …)` | One of six interactions (`selected`, `purchaseStarted`, `purchaseAbandoned`, `purchaseFailed`, `restore`, `error`), i.e. what happened BETWEEN the display and the close. |
-
-The purchase **outcome** is always yours, even with the built-in renderer:
-your app performs the `in_app_purchase` call, so only your app sees whether
-the sheet was cancelled or the card was declined.
-
-```dart
-final viewId = await revnix.logPaywallShown(
-  placementKey: 'onboarding', paywallId: paywall.paywallId) ?? '';
-
-// From your own in_app_purchase error handling.
-await revnix.logPaywallEvent(
-  RevnixPaywallEvent.purchaseAbandoned, viewId, productId: productId);
-
-await revnix.logPaywallClosed(viewId, placementKey: 'onboarding');
-```
-
-All six are pure ledger history: over-reporting can skew a report, it can
-never grant or revoke access.
-
-### Implicit placements
-
-Six placements resolve without a `resolvePlacement` call: `app_install`,
-`app_launch`, `session_start`, `deeplink_open`, `paywall_decline` and
-`transaction_abandon`. Opt in with `implicitPlacements: true` (off by default)
-and listen on `implicitPaywalls`; the native SDKs watch the foreground for
-`session_start` and ask `GET /v1/config` once so an app that configured none
-of the six costs one cached request per launch.
-
-```dart
-final revnix = await RevnixClient.configure(
-  apiKey: 'rvx_pk_live_…', baseUrl: 'https://….convex.site',
-  implicitPlacements: true,
-);
-revnix.implicitPaywalls.listen((trigger) => showPaywall(trigger.resolution));
-
-// deeplink_open is the one moment the SDK cannot see itself:
-appLinks.uriLinkStream.listen((uri) => revnix.handleDeepLink(uri.toString()));
-```
-
-With app_links 6 or later, `uriLinkStream` delivers the link that launched
-the app as its first event and every link after it, and does not replay it
-on a hot restart or a second subscription: subscribe once at startup and
-do not also call `getInitialLink()`; it is the same cold-start link and
-would count twice. On uni_links or app_links 5 and earlier the stream
-carries only links that arrive while running, so also hand over
-`getInitialLink()` once at startup.
-
-Pass `placementKey: trigger.resolution.placementKey` to `RevnixPaywall`:
-that marks the display as implicit and is what stops a `paywall_decline`
-paywall from firing `paywall_decline` again. A close is a decline: never
-report one for a display that ended in a purchase.
-
-The dashboard QR/link preview (`<scheme>://revnix-preview?revnix_preview=…`)
-arrives the same way: hand the URL to `handleDeepLink` and it comes back on
-`implicitPaywalls` like any other trigger, detectable by
-`resolution.placementKey == revnixPreviewPlacementKey`. `RevnixPaywall`
-already refuses to call `onPurchase` for that placement key, showing a
-"Purchases are disabled in preview." dialog instead;
-a custom UI rendering the preview itself must add the same check.
-
-### Deferred deep links
-
-The link a customer clicked before they had the app, echoed back once per
-install. Unlike the Unity and Capacitor SDKs, Flutter never calls
-`registerInstall` on its own. Call it yourself after `configure()`, as in
-the quick start above, or the iOS side of this event never fires:
-
-```dart
-revnix.onDeferredDeepLink.listen((event) {
-  final (url, match) = event;
-  route(url); // match is DeferredDeepLinkMatch.exact or .probabilistic
-});
-
-// Android only, and only after configure() - the Android side rejects the
-// call otherwise. Hand the raw referrer to the SDK from whichever
-// install-referrer plugin you already use. No-op on iOS.
-await revnix.handleInstallReferrer(referrer);
-```
-
-Unwrap a click-tracking link from an email service provider before routing
-on it, from the same entry point:
-
-```dart
-final resolved = await revnix.resolveDeepLink(rawUrl);
-route(resolved);
-await revnix.handleDeepLink(resolved);
-```
-
-The most recent link the customer clicked, read straight from the native
-SDK's own record rather than a stream. Never throws; null if nothing has
-been recorded yet:
-
-```dart
-final last = await revnix.getLastDeepLink();
-if (last != null) route(last.url);
-```
-
-### Install attribution
-
-The install-attribution verdict, straight from the native SDK's own record:
-which channel gets credit for this install, and the campaign fields that came
-with it. `getAttribution()` is a point-in-time read; `onAttribution` delivers
-the same verdict once the native SDK settles on it after cold-start install
-registration, and again whenever it later changes. `getAttribution()` returns
-`null` when no install has been recorded yet or the read failed;
-`onAttribution` simply does not fire until there is a verdict. The plugin
-always hands the native SDK the callback, so the SDK fetches the verdict on
-its own once after the install is first reported, and again after an
-install-referrer or Apple Search Ads report; later changes are only seen when
-you call `getAttribution()`.
-
-```dart
-final attribution = await revnix.getAttribution();
-if (attribution != null) print(attribution.installMatch);
-
-revnix.onAttribution.listen((attribution) {
-  print('${attribution.installMatch}: ${attribution.source}');
-});
-```
-
-### SKAdNetwork
-
-iOS only, a no-op on Android. Registration with Apple happens automatically
-inside `registerInstall`; report a conversion value whenever you have one
-(fine 0-63, coarse optional). The value goes to Apple, never to Revnix, and
-your app needs `NSAdvertisingAttributionReportEndpoint` in its Info.plist for
-Apple to deliver the postback:
-
-```dart
-await revnix.updateSkanConversionValue(12, coarse: RevnixCoarseValue.medium);
-```
-
-Pass `skan: false` to `configure()` to opt out entirely.
-
-### Ad revenue
-
-Call `logAdRevenue` from your mediation SDK's paid-event callback (AdMob
-`onPaidEvent`, AppLovin MAX `onAdRevenuePaid`). Fire-and-forget; a `revenue`
-of 0 or less is dropped. It feeds the Return on ad spend table, see
-[Ad revenue](https://revnix.io/docs/ad-revenue):
-
-```dart
-await revnix.logAdRevenue(
-  revenue: 0.0032,
-  currency: 'USD',
-  network: 'admob',
-  mediation: 'applovin_max',
-  adUnit: adUnitId,
-  format: 'rewarded',
-);
-```
-
-### Custom events
-
-Call `track` to report an in-app event that isn't a purchase — Revnix records
-it as `custom.<event>`. Fire-and-forget. `event` must match
-`^[a-z0-9_]{1,64}$`.
-
-```dart
-await revnix.track('level_up', properties: {'level': 5});
-```
-
-### Attribution import
-
-Call `setAttribution` from your MMP's own attribution callback so Revnix
-credits revenue to the network and campaign that MMP already identified.
-
-AppsFlyer's `onConversionDataSuccess`:
-
-```dart
-void onConversionDataSuccess(Map<String, dynamic> data) {
-  if (data['af_status'] == 'Organic') return;
-  revnix.setAttribution(
-    provider: 'appsflyer',
-    network: data['media_source'] as String? ?? '',
-    campaign: data['campaign'] as String?,
-    adGroup: data['af_adset'] as String?,
-    creative: data['af_ad'] as String?,
-  );
-}
-```
-
-Adjust's attribution callback:
-
-```dart
-Adjust.addAttributionCallback((attribution) {
-  final network = attribution.network;
-  if (network == null || network.isEmpty) return;
-  revnix.setAttribution(
-    provider: 'adjust',
-    network: network,
-    campaign: attribution.campaign,
-    adGroup: attribution.adgroup,
-    creative: attribution.creative,
-  );
-});
-```
-
-### Uninstall measurement
-
-Revnix measures uninstalls the way Adjust/AppsFlyer do: hand it the
-device's push token, and once a day a silent push probes it; when
-APNs/FCM reports the token dead, the customer gets an `app.uninstalled`
-event. Revnix probes iOS tokens through APNs directly, so an FCM token on
-iOS is never delivered: get the APNs token on iOS and the FCM token on
-Android with `firebase_messaging`, and forward whichever one applies:
-
-```dart
-if (Platform.isIOS) {
-  final apns = await FirebaseMessaging.instance.getAPNSToken();
-  if (apns != null) revnix.setPushToken(apns);
-} else {
-  FirebaseMessaging.instance.getToken().then((token) {
-    if (token != null) revnix.setPushToken(token);
-  });
-  FirebaseMessaging.instance.onTokenRefresh.listen(revnix.setPushToken);
-}
-```
-
-Fire-and-forget; handlers forward the call to the native SDK, which posts
-and dedupes per customer+token. Requires Firebase Cloud Messaging set up
-on Android and the Push Notifications + Background Modes → Remote
-notifications capability on iOS; no notification permission needed, the
-probe is silent. See
-[Uninstall measurement](https://revnix.io/docs/uninstall-measurement).
-
-### App Tracking Transparency
-
-iOS only, returns `-1` on Android. Shows Apple's ATT prompt and returns its
-answer (`0` notDetermined, `1` restricted, `2` denied, `3` authorized);
-stores `att_status` and `idfa` (when authorized) as customer attributes.
-Needs `NSUserTrackingUsageDescription` in Info.plist:
-
-```dart
-final status = await revnix.requestTrackingAuthorization();
-```
-
-Pass `attWaitTimeout: Duration(seconds: 30)` to `configure()` to hold the
-first `registerInstall()` report while the prompt is unanswered, so the
-install carries the IDFA. See
-[App Tracking Transparency](https://revnix.io/docs/app-tracking-transparency).
-
-## Errors
-
-Every native failure arrives as a typed `RevnixException` with `isRetryable`
-intact, never a bare `PlatformException`.
-
-```dart
-try {
-  await revnix.entitlements();
-} on RevnixAuthException catch (err) {
-  // 401/403: key revoked or wrong kind. Deliberate; do NOT retry.
-} on RevnixRateLimitException catch (err) {
-  await Future<void>.delayed(Duration(milliseconds: err.retryAfterMs ?? 1000));
-} on RevnixException catch (err) {
-  if (err.isRetryable) showOfflineBanner();
-}
-```
-
-The retryable/deliberate split is the contract: a transient failure serves the
-cache, a deliberate rejection must surface, or there is no kill switch.
-`isEntitled` is the exception; it never throws. A transient failure answers
-from the offline cache; a deliberate rejection, or a failure with nothing
-cached, resolves to `false`, so gates fail closed and a revoked key still
-locks out a cached snapshot.
-
-## Status
-
-**Builds; not published.** The plugin compiles and runs end to end on both
-platforms; the native SDKs come in as git submodules (see the note at the
-top), so it does not depend on unpublished CocoaPods/Maven artifacts. The Dart layer is
-complete and tested (`flutter test`, covering error rehydration, the
-`stale` flag, gate fail-closed behaviour, wire marshalling, implicit placements
-and the paywall renderer).
-
-What remains is distribution: `revnix_flutter` 0.3.0 is not on pub.dev, so it
-can only be consumed as a **path dependency** today, from a checkout cloned
-with `--recurse-submodules`. A pubspec `git:` dependency does not work: pub
-does not fetch submodules, so the native sources would be missing. The pub.dev
-archive does include the submodule contents (`flutter pub publish --dry-run`
-lists them), so publishing needs no extra step. When the native SDKs
-reach CocoaPods and Maven Central, the submodules should be swapped for real
-dependencies before publishing: one line each in `ios/revnix_flutter.podspec`
-and `android/build.gradle.kts`, both marked in place.
-
-## v1 non-goals
-
-- `identify` / `alias`: server-proxied by design.
-- Web, Dart's `int` is a double on `dart2js`, which would lose precision on
-  unix-ms timestamps and ledger cursors. Mobile only.
-- Amazon and other stores.
+Your API key and deployment URL are in the dashboard under Settings. See [API keys](https://www.revnix.io/docs/api-keys).
+
+## Purchases and entitlements without server code
+
+**Revnix handles the hard parts of subscriptions in a small, developer-friendly plugin.**
+
+- `purchase(productId)` runs the whole flow: store sheet, server-side receipt validation, entitlement, transaction finish. `restore()` brings purchases back on a new device.
+- Renewals, refunds, upgrades and purchases on other devices are picked up from the stores and reflected in the entitlement on their own.
+- Entitlements and placements are cached on device, so paid users stay unlocked offline. `isEntitled()` never throws and fails closed.
+- Failed registrations are queued durably; `retryPendingPurchases()` drains the queue on the next launch.
+- Typed errors: `purchase_blocked`, `product_not_found`, `store_error` and more, each a `RevnixException` with `isRetryable`. See [Make purchases](https://www.revnix.io/docs/flutter/make-purchases).
+- Already using `in_app_purchase`? Keep it and call `registerPurchase()` instead.
+
+## Paywalls that update without app releases
+
+![Revnix paywall builder: element tree, background library and a live iPhone preview](https://www.revnix.io/sdk/react-native/paywalls.png)
+
+With the [Revnix paywall builder](https://www.revnix.io/docs/paywall-builder) you design the paywall in the dashboard and render it in your app.
+
+- **Pure Flutter renderer**: `RevnixPaywall` draws the published design with Flutter's own widgets, kept in lockstep with the dashboard preview. No WebView, no extra dependency.
+- **250 templates**: pick a layout, theme and accent, then edit copy, packages and badges.
+- **Update without redeploying**: change prices, copy or layout any time; the next `resolvePlacement()` picks it up.
+- **Implicit placements**: `app_launch`, `session_start`, `paywall_decline` and three more fire without a resolve call.
+- **Localized**: 43 languages for the built-in strings, plus per-locale copy of your own. `RevnixClient.setLocale()` overrides the device language.
+
+Learn more in [Show paywalls](https://www.revnix.io/docs/flutter/show-paywalls) and [Placements](https://www.revnix.io/docs/placements).
+
+## A/B tests with a built-in holdout
+
+![Revnix A/B test results with a winner and credible intervals](https://www.revnix.io/sdk/react-native/ab-test.png)
+
+- Split a placement's traffic between offering and paywall variants. Conversions, trials, revenue per user and MRR are calculated per variant.
+- Add a **holdout** variant that shows no paywall at all, to measure what the paywall is really worth.
+- Bayesian results with 95% credible intervals and a sample-size planner, so you know when to stop.
+- Target a test at an audience with `setAttributes()`. Ship the winner from the dashboard; the plugin needs no change.
+
+Learn more in [A/B tests](https://www.revnix.io/docs/ab-tests).
+
+## Attribution and deep links
+
+![Revnix MRR by country, last 90 days](https://www.revnix.io/sdk/react-native/attribution.png)
+
+- **Install attribution** from Revnix links, with per-link click lookback windows. `getAttribution()` and `onAttribution` expose the verdict. See [Attribution](https://www.revnix.io/docs/attribution).
+- **Deferred deep links** resolve on first launch through `onDeferredDeepLink`, so a user who installs from a campaign lands on the right screen. See [Deferred deep links](https://www.revnix.io/docs/deferred-deep-links).
+- **Apple Search Ads** and **Google Ads** attribution, with App Tracking Transparency via `requestTrackingAuthorization()`. See [Apple Search Ads](https://www.revnix.io/docs/apple-search-ads) and [Google Ads](https://www.revnix.io/docs/google-ads-attribution).
+- **MMP forwarding** to AppsFlyer and Adjust with `setAttribution()`, **ad revenue** logging with `logAdRevenue()` and **uninstall measurement** with `setPushToken()`. See [MMP attribution](https://www.revnix.io/docs/mmp-attribution), [Ad revenue](https://www.revnix.io/docs/ad-revenue) and [Uninstall measurement](https://www.revnix.io/docs/uninstall-measurement).
+- **SKAdNetwork** conversion values with `updateSkanConversionValue()`. See [SKAdNetwork](https://www.revnix.io/docs/skadnetwork).
+- **Fraud prevention**: anonymous-IP and click-injection checks keep paid channels honest. See [Fraud prevention](https://www.revnix.io/docs/fraud-prevention).
+
+## Real-time analytics for your Flutter app
+
+![Revnix overview: active subscriptions, revenue and MRR over 90 days](https://www.revnix.io/sdk/react-native/analytics.png)
+
+- Revenue, MRR, ARR, ARPU, LTV and ROAS, updated from the ledger as purchases arrive.
+- Cohorts, retention, funnels and predicted LTV. See [Analytics](https://www.revnix.io/docs/analytics).
+- Filter and group by store, product, country, channel, campaign and A/B test variant.
+- Custom events with `track()`. Saved reports, alerts and a REST API for your own dashboards. See [Reports](https://www.revnix.io/docs/reports) and [REST API](https://www.revnix.io/docs/rest-api).
+
+## Requirements
+
+| Requirement | Minimum |
+| --- | --- |
+| Flutter | 3.32 (Dart 3.8) |
+| iOS | 16.0 |
+| Android | API 24 (Android 7.0) |
+| JDK (Android build) | 17 |
+
+The plugin is mobile only. Web, desktop and stores other than the App Store and Google Play are not supported.
+
+## Documentation
+
+- [Overview](https://www.revnix.io/docs/flutter)
+- [Installation](https://www.revnix.io/docs/flutter/installation)
+- [Configuration](https://www.revnix.io/docs/flutter/configuration)
+- [Make purchases](https://www.revnix.io/docs/flutter/make-purchases)
+- [Check entitlements](https://www.revnix.io/docs/flutter/check-entitlements)
+- [Show paywalls](https://www.revnix.io/docs/flutter/show-paywalls)
+- [API reference](https://www.revnix.io/docs/flutter/reference)
+
+Revnix also ships SDKs for [React Native](https://www.revnix.io/docs/react-native), [iOS](https://www.revnix.io/docs/ios), [Android](https://www.revnix.io/docs/android), [Capacitor](https://www.revnix.io/docs/capacitor) and [Unity](https://www.revnix.io/docs/unity).
+
+## Migrating from another SDK
+
+Moving from Adapty or RevenueCat? Revnix imports your customers and purchase history, and the SDK calls map one to one.
+
+- [Migrate from Adapty](https://www.revnix.io/docs/migrate-from-adapty)
+- [Migrate from RevenueCat](https://www.revnix.io/docs/migrate-from-revenuecat)
+
+## Support
+
+- Email [support@revnix.io](mailto:support@revnix.io) with questions, bugs or feature requests.
+- Check the [status page](https://www.revnix.io/status) for incidents.
+- Want to work on the plugin itself? Clone with `git clone --recurse-submodules`: the native SDKs live in `ios/revnix_flutter/Revnix` and `android/revnix-kotlin` and are never edited from here.
+
+## License
+
+Revnix SDK is available under the MIT license. See [LICENSE](https://github.com/Oth-tech/RevnixSDK-Flutter/blob/main/LICENSE) for details.
