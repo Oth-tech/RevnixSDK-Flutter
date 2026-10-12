@@ -1,7 +1,13 @@
 ## Unreleased
 
+## 1.6.0
+
 - **`flushEvents()` and `preload(placementKeys)`.** Events are now batched and persisted, and placements resolve cache-first, via the 1.6.0 natives.
 - Release automation: `release.yml` lands the version bump and tags it; `publish.yml` publishes the tag to pub.dev through automated publishing.
+
+### Changed
+
+- Native SDKs: RevnixSDK-iOS d1979df → ef5d1a9, RevnixSDK-Android 0c952db → 1b6799a.
 
 ## 1.5.0
 
