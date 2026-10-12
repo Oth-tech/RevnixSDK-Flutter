@@ -21,6 +21,7 @@ import com.revnix.android.AndroidStorage
 import com.revnix.android.BillingException
 import com.revnix.android.PlayBillingConnector
 import com.revnix.android.ProductNotFoundException
+import com.revnix.android.ui.preload
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
@@ -224,6 +225,17 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                     }
                     "retryPendingPurchases" ->
                         result.success(active.retryPendingPurchases())
+                    "flushEvents" -> {
+                        active.flushEvents()
+                        result.success(null)
+                    }
+                    "preload" -> {
+                        active.preload(
+                            context,
+                            call.argument<List<String>>("placementKeys").orEmpty(),
+                        )
+                        result.success(null)
+                    }
                     "pendingPurchaseCount" ->
                         result.success(active.pendingPurchaseCount())
                     "resolvePlacement" ->

@@ -170,6 +170,12 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
                     result(await RevnixStoreKit.restore(client: client))
                 case "retryPendingPurchases":
                     result(await client.retryPendingPurchases())
+                case "flushEvents":
+                    await client.flushEvents()
+                    result(nil)
+                case "preload":
+                    await client.preload(args["placementKeys"] as? [String] ?? [])
+                    result(nil)
                 case "pendingPurchaseCount":
                     result(await client.pendingPurchaseCount())
                 case "resolvePlacement":

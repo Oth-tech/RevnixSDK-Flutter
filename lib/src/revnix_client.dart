@@ -197,6 +197,13 @@ class RevnixClient {
   Future<int> retryPendingPurchases() async =>
       await _invoke<int>('retryPendingPurchases') ?? 0;
 
+  /// Send every queued event now instead of waiting for the next batch.
+  Future<void> flushEvents() => _invoke<void>('flushEvents');
+
+  /// Warm the placement cache (and paywall images on Android) for [placementKeys].
+  Future<void> preload(List<String> placementKeys) =>
+      _invoke<void>('preload', {'placementKeys': placementKeys});
+
   /// How many registrations are still queued.
   Future<int> pendingPurchaseCount() async =>
       await _invoke<int>('pendingPurchaseCount') ?? 0;
