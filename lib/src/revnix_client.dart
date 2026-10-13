@@ -88,6 +88,10 @@ class RevnixClient {
   /// [deviceIntegrity] opts in to Apple App Attest / Google Play Integrity
   /// evidence on install reports; pairs with "Require device integrity" in
   /// the dashboard.
+  ///
+  /// [advertisingId] (Android only) stores the Google Advertising ID on the
+  /// customer as `gps_adid` after [registerInstall]; the app needs
+  /// `play-services-ads-identifier` and the `AD_ID` permission.
   static Future<RevnixClient> configure({
     required String apiKey,
     required String baseUrl,
@@ -100,6 +104,7 @@ class RevnixClient {
     bool skan = true,
     Duration? attWaitTimeout,
     bool deviceIntegrity = false,
+    bool advertisingId = false,
     @visibleForTesting MethodChannel? channel,
   }) async {
     final client = RevnixClient._(channel ?? _defaultChannel);
@@ -115,6 +120,7 @@ class RevnixClient {
       'skan': skan,
       'attWaitTimeoutMs': ?attWaitTimeout?.inMilliseconds,
       'deviceIntegrity': deviceIntegrity,
+      'advertisingId': advertisingId,
     });
     _instance = client;
     return client;

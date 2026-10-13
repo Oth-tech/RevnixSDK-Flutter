@@ -1,5 +1,6 @@
 ## Unreleased
 
+- **`advertisingId` option on `configure` (Android).** Stores the Google Advertising ID on the customer as `gps_adid` after `registerInstall`, resent only when it changes and deleted after an opt-out. The app needs `com.google.android.gms:play-services-ads-identifier` and the `com.google.android.gms.permission.AD_ID` permission in the app; without them, or after an opt-out, nothing is stored.
 - **`deviceIntegrity` option on `configure`.** Opt in to Apple App Attest / Google Play Integrity evidence on install reports.
 - **Paywall blocks: `timer`, `video`, `toggle` and the card `carousel` layout.** Countdown to a date or from when the paywall opens, a video drawn as its poster (Flutter has no built-in player), a free-trial switch that flips the selected package, and swipeable pages with dots and optional auto-advance.
 

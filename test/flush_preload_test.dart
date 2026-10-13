@@ -32,7 +32,7 @@ void main() {
       });
     });
 
-    test('configure carries deviceIntegrity, false by default', () async {
+    test('configure carries deviceIntegrity and advertisingId, false by default', () async {
       const channel = MethodChannel('test.revnix/device-integrity');
       final configures = <Object?>[];
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -46,6 +46,7 @@ void main() {
           apiKey: 'rvx_pk_test',
           baseUrl: 'https://x.convex.site',
           deviceIntegrity: on,
+          advertisingId: on,
           channel: channel,
         );
       }
@@ -57,6 +58,10 @@ void main() {
 
       expect(
         configures.map((a) => (a as Map)['deviceIntegrity']),
+        [false, true, false],
+      );
+      expect(
+        configures.map((a) => (a as Map)['advertisingId']),
         [false, true, false],
       );
     });

@@ -21,6 +21,7 @@ import com.revnix.android.AndroidStorage
 import com.revnix.android.BillingException
 import com.revnix.android.PlayBillingConnector
 import com.revnix.android.ProductNotFoundException
+import com.revnix.android.googleAdvertisingId
 import com.revnix.android.playIntegrity
 import com.revnix.android.ui.preload
 import io.flutter.embedding.engine.plugins.FlutterPlugin
@@ -447,6 +448,7 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                 },
                 implicitPlacements = call.argument<Boolean>("implicitPlacements") ?: false,
                 deviceIntegrity = if (call.argument<Boolean>("deviceIntegrity") == true) playIntegrity(context) else null,
+                advertisingId = if (call.argument<Boolean>("advertisingId") == true) googleAdvertisingId(context) else null,
                 onDeferredDeepLink = { url, match ->
                     scope.launch {
                         withContext(Dispatchers.Main) {
