@@ -31,5 +31,34 @@ void main() {
         'placementKeys': ['onboarding', 'home'],
       });
     });
+
+    test('configure carries deviceIntegrity, false by default', () async {
+      const channel = MethodChannel('test.revnix/device-integrity');
+      final configures = <Object?>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (received) async {
+        if (received.method == 'configure') configures.add(received.arguments);
+        return null;
+      });
+
+      for (final on in [false, true]) {
+        await RevnixClient.configure(
+          apiKey: 'rvx_pk_test',
+          baseUrl: 'https://x.convex.site',
+          deviceIntegrity: on,
+          channel: channel,
+        );
+      }
+      await RevnixClient.configure(
+        apiKey: 'rvx_pk_test',
+        baseUrl: 'https://x.convex.site',
+        channel: channel,
+      );
+
+      expect(
+        configures.map((a) => (a as Map)['deviceIntegrity']),
+        [false, true, false],
+      );
+    });
   });
 }

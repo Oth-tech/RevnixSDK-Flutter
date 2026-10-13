@@ -1,5 +1,6 @@
 ## Unreleased
 
+- **`deviceIntegrity` option on `configure`.** Opt in to Apple App Attest / Google Play Integrity evidence on install reports.
 - **Paywall blocks: `timer`, `video`, `toggle` and the card `carousel` layout.** Countdown to a date or from when the paywall opens, a video drawn as its poster (Flutter has no built-in player), a free-trial switch that flips the selected package, and swipeable pages with dots and optional auto-advance.
 
 ## 1.6.0

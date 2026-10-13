@@ -84,6 +84,10 @@ class RevnixClient {
   /// report up to this long while the App Tracking Transparency prompt is
   /// unanswered, so the install goes out with the IDFA already stored. Null
   /// (the default) never waits.
+  ///
+  /// [deviceIntegrity] opts in to Apple App Attest / Google Play Integrity
+  /// evidence on install reports; pairs with "Require device integrity" in
+  /// the dashboard.
   static Future<RevnixClient> configure({
     required String apiKey,
     required String baseUrl,
@@ -95,6 +99,7 @@ class RevnixClient {
     Duration sessionTimeout = const Duration(minutes: 30),
     bool skan = true,
     Duration? attWaitTimeout,
+    bool deviceIntegrity = false,
     @visibleForTesting MethodChannel? channel,
   }) async {
     final client = RevnixClient._(channel ?? _defaultChannel);
@@ -109,6 +114,7 @@ class RevnixClient {
       'sessionTimeoutMs': sessionTimeout.inMilliseconds,
       'skan': skan,
       'attWaitTimeoutMs': ?attWaitTimeout?.inMilliseconds,
+      'deviceIntegrity': deviceIntegrity,
     });
     _instance = client;
     return client;

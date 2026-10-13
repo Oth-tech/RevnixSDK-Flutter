@@ -407,7 +407,8 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
                 onAttribution: onAttribution,
                 sessionTimeout: millis("sessionTimeoutMs", revnixDefaultSessionTimeout),
                 skan: args["skan"] as? Bool ?? true,
-                attWaitTimeout: (args["attWaitTimeoutMs"] as? Int).map { TimeInterval($0) / 1000 }
+                attWaitTimeout: (args["attWaitTimeoutMs"] as? Int).map { TimeInterval($0) / 1000 },
+                deviceIntegrity: args["deviceIntegrity"] as? Bool ?? false
             ))
         // REV-272: retire the previous client BEFORE replacing it. Its
         // didBecomeActive observer lives on NotificationCenter and outlives the
