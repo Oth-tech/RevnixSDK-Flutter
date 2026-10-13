@@ -178,4 +178,31 @@ void main() {
       expect(revnixDeviceLocale(), isNot('ur'));
     });
   });
+
+  test('timer format, expired text and toggle label are localizable', () {
+    final out = revnixLocalizeDoc(
+      PaywallBlockDoc.parse(jsonDecode('''
+        {
+          "version": 1, "defaultLocale": "en",
+          "locales": { "es": {
+            "t.format": "Termina en {mm}:{ss}", "t.expiredText": "Oferta vencida",
+            "g.label": "Prueba gratis"
+          } },
+          "blocks": [
+            { "id": "t", "type": "timer", "duration": 60, "format": "Ends in {mm}:{ss}", "expiredText": "Expired" },
+            { "id": "c", "type": "card", "layout": "carousel", "autoAdvance": 3, "children": [
+              { "id": "g", "type": "toggle", "label": "Free trial", "onPackageIndex": 0, "offPackageIndex": 1 } ] }
+          ]
+        }
+      '''))!,
+      'es',
+    );
+    final timer = out.blocks[0] as TimerBlock;
+    expect(timer.format, 'Termina en {mm}:{ss}');
+    expect(timer.expiredText, 'Oferta vencida');
+    expect(timer.duration, 60);
+    final card = out.blocks[1] as CardBlock;
+    expect(card.autoAdvance, 3);
+    expect((card.children.first as ToggleBlock).label, 'Prueba gratis');
+  });
 }

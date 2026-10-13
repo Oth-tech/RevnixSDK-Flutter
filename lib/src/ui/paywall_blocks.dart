@@ -23,6 +23,7 @@
 //     `{price}`) rather than resolving to something wrong — a customer must
 //     never be shown a price the store will not charge.
 
+import 'dart:async';
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
@@ -626,6 +627,7 @@ class CardBlock extends PaywallBlock {
     this.packageIndex,
     this.columns,
     this.gridColumns,
+    this.autoAdvance,
     this.children = const [],
     super.style,
     super.selectedStyle,
@@ -645,7 +647,73 @@ class CardBlock extends PaywallBlock {
 
   /// grid only — a CSS track list ("1fr 60px 66px").
   final String? gridColumns;
+
+  /// carousel only — seconds between automatic page turns, wrapping after the
+  /// last page. Null means pages change only by swipe.
+  final int? autoAdvance;
   final List<PaywallBlock> children;
+}
+
+/// Countdown text, drawn like a [TextBlock]. Exactly one of [endsAt] /
+/// [duration] is set; [duration] counts from the paywall's first display.
+class TimerBlock extends PaywallBlock {
+  const TimerBlock({
+    required super.id,
+    this.endsAt,
+    this.duration,
+    this.format,
+    this.expiredText,
+    super.style,
+    super.selectedStyle,
+    super.visibility,
+  });
+
+  /// ISO-8601 deadline. Unparseable means expired.
+  final String? endsAt;
+
+  /// Seconds.
+  final int? duration;
+
+  /// `{d}` `{hh}` `{mm}` `{ss}` tokens; defaults to `{hh}:{mm}:{ss}`.
+  final String? format;
+
+  /// Drawn once the countdown reaches 0. Null hides the block at 0.
+  final String? expiredText;
+}
+
+/// A muted looping clip. This SDK has no player, so [poster] is drawn in its
+/// place, sized like an [ImageBlock].
+class VideoBlock extends PaywallBlock {
+  const VideoBlock({
+    required super.id,
+    this.url,
+    this.poster,
+    this.fit,
+    super.style,
+    super.selectedStyle,
+    super.visibility,
+  });
+  final String? url;
+  final String? poster;
+  final String? fit;
+}
+
+/// A free-trial switch: ON while the package at [onPackageIndex] is selected;
+/// tapping selects the other index. Not drawn when either index is outside
+/// the offering.
+class ToggleBlock extends PaywallBlock {
+  const ToggleBlock({
+    required super.id,
+    required this.label,
+    required this.onPackageIndex,
+    required this.offPackageIndex,
+    super.style,
+    super.selectedStyle,
+    super.visibility,
+  });
+  final String label;
+  final int onPackageIndex;
+  final int offPackageIndex;
 }
 
 /// A block type this SDK does not know. Skipped when rendering.
@@ -839,8 +907,40 @@ class PaywallBlockDoc {
           packageIndex: i('packageIndex'),
           columns: i('columns'),
           gridColumns: s('gridColumns'),
+          autoAdvance: i('autoAdvance'),
           children:
               (value['children'] as List<Object?>? ?? const []).map(_parseBlock).toList(),
+          style: style,
+          selectedStyle: selectedStyle,
+          visibility: visibility,
+        );
+      case 'timer':
+        return TimerBlock(
+          id: id,
+          endsAt: s('endsAt'),
+          duration: i('duration'),
+          format: s('format'),
+          expiredText: s('expiredText'),
+          style: style,
+          selectedStyle: selectedStyle,
+          visibility: visibility,
+        );
+      case 'video':
+        return VideoBlock(
+          id: id,
+          url: s('url'),
+          poster: s('poster'),
+          fit: s('fit'),
+          style: style,
+          selectedStyle: selectedStyle,
+          visibility: visibility,
+        );
+      case 'toggle':
+        return ToggleBlock(
+          id: id,
+          label: s('label') ?? '',
+          onPackageIndex: i('onPackageIndex') ?? -1,
+          offPackageIndex: i('offPackageIndex') ?? -1,
           style: style,
           selectedStyle: selectedStyle,
           visibility: visibility,
@@ -1227,6 +1327,56 @@ Map<String, RevnixResolvedBlock> revnixResolveBlocks(
   return out;
 }
 
+/// Whole seconds a [TimerBlock] has left at [now], never negative. A
+/// `duration` counts from [shownAt]; an unparseable or missing deadline is
+/// already expired.
+int revnixTimerRemaining(TimerBlock block, DateTime shownAt, DateTime now) {
+  final endsAt = block.endsAt;
+  final duration = block.duration;
+  final deadline = endsAt != null
+      ? DateTime.tryParse(endsAt)
+      : duration != null
+          ? shownAt.add(Duration(seconds: duration))
+          : null;
+  if (deadline == null) return 0;
+  final remaining = deadline.difference(now).inSeconds;
+  return remaining < 0 ? 0 : remaining;
+}
+
+/// Fills a timer's `{d}` `{hh}` `{mm}` `{ss}` tokens from [remaining] seconds.
+/// Each token is the remainder of the next larger unit the format also
+/// contains, so `{mm}:{ss}` with 90 minutes left reads `90:00`.
+String revnixFormatCountdown(String format, int remaining) {
+  final r = remaining < 0 ? 0 : remaining;
+  String two(int v) => v.toString().padLeft(2, '0');
+  final hasD = format.contains('{d}');
+  final hasH = format.contains('{hh}');
+  final hasM = format.contains('{mm}');
+  final belowDay = hasD ? r % 86400 : r;
+  final belowHour = hasH ? r % 3600 : belowDay;
+  return format
+      .replaceAll('{d}', '${r ~/ 86400}')
+      .replaceAll('{hh}', two(belowDay ~/ 3600))
+      .replaceAll('{mm}', two(belowHour ~/ 60))
+      .replaceAll('{ss}', two(hasM ? r % 60 : belowHour));
+}
+
+/// Whether a [ToggleBlock] is ON and the package a tap selects, or null when
+/// either index is outside the offering and the block is not drawn.
+({bool on, String target})? revnixToggleState(
+  ToggleBlock block,
+  List<RevnixPaywallPackage> packages,
+  RevnixPaywallPackage? selected,
+) {
+  bool reachable(int i) => i >= 0 && i < packages.length;
+  if (!reachable(block.onPackageIndex) || !reachable(block.offPackageIndex)) return null;
+  final on = selected?.packageId == packages[block.onPackageIndex].packageId;
+  return (
+    on: on,
+    target: packages[on ? block.offPackageIndex : block.onPackageIndex].packageId,
+  );
+}
+
 // ——— colors ———
 
 /// Expands a palette token (`@accent`, `@text/12`) and parses the result.
@@ -1464,6 +1614,7 @@ class BlockRenderContext {
     this.onPrivacy,
     this.onClose,
     this.onDiagnostic,
+    this.shownAt,
   });
 
   final PaywallBlockDoc doc;
@@ -1504,6 +1655,10 @@ class BlockRenderContext {
   /// colour from the design), so this is the only way a host learns that a
   /// paywall is rendering approximately.
   final void Function(String message)? onDiagnostic;
+
+  /// When this paywall view was first displayed — what a `duration` timer
+  /// counts from. Null means each timer counts from its own first build.
+  final DateTime? shownAt;
 
   /// The package the screen treats as selected: [selectedPackageId] when the
   /// offering carries it, else the first package (REV-262 §1). Root-level
@@ -1890,19 +2045,33 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
     if (block is TextBlock) {
       return _closeOnTap(
         block.action,
-        _styled(
-          style,
-          Text(
-            revnixResolveTags(block.text, scope.package, ctx.packages),
-            textAlign: _textAlign(style?.align),
-            maxLines: style?.nowrap == true ? 1 : null,
-            overflow: style?.nowrap == true ? TextOverflow.clip : null,
-            style: _textStyle(style),
-          ),
-        ),
+        _text(revnixResolveTags(block.text, scope.package, ctx.packages), style),
+      );
+    }
+    if (block is TimerBlock) {
+      if (block.expiredText == null &&
+          revnixTimerRemaining(block, ctx.shownAt ?? DateTime.now(), DateTime.now()) == 0) {
+        return null;
+      }
+      return _Countdown(
+        block: block,
+        shownAt: ctx.shownAt,
+        builder: (text) => _text(text, style),
       );
     }
     if (block is ImageBlock) return _closeOnTap(block.action, _image(block, style));
+    if (block is VideoBlock) {
+      ctx.onDiagnostic?.call('video drawn as its poster: no built-in player');
+      final poster = block.poster;
+      return _media(
+        style,
+        url: poster == null || poster.isEmpty ? null : poster,
+        fit: block.fit,
+        radius: style?.radius == null ? null : BorderRadius.circular(style!.radius!),
+        slot: () => const SizedBox.expand(),
+      );
+    }
+    if (block is ToggleBlock) return _toggle(block, scope, style);
     if (block is ListBlock) return _list(block, style);
     if (block is ProductsBlock) return _products(block, style);
     if (block is ButtonBlock) return _button(block, scope, style);
@@ -1935,6 +2104,17 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
   }
 
   // ——— leaves ———
+
+  Widget _text(String text, BlockStyle? style) => _styled(
+        style,
+        Text(
+          text,
+          textAlign: _textAlign(style?.align),
+          maxLines: style?.nowrap == true ? 1 : null,
+          overflow: style?.nowrap == true ? TextOverflow.clip : null,
+          style: _textStyle(style),
+        ),
+      );
 
   TextStyle _textStyle(BlockStyle? style, {double defaultSize = 15, FontWeight? defaultWeight}) {
     final doc = ctx.doc;
@@ -1977,30 +2157,35 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
         _ => null,
       };
 
-  Widget _image(ImageBlock block, BlockStyle? style) {
-    // A converted design sizes its own slot; the 160px default is only for a
-    // slot dropped into a flow column, and must not fight it. An `inset`
-    // image is placed by [_stackChild] with Positioned.fill, so it takes the
-    // whole stack on both axes and needs no size of its own here.
+  Widget _image(ImageBlock block, BlockStyle? style) => _media(
+        style,
+        url: (block.url != null && block.url!.isNotEmpty) ? block.url : ctx.heroImageUrl,
+        fit: block.fit,
+        radius: block.shape == 'circle' ? BorderRadius.circular(9999) : null,
+        slot: () => _imageSlot(block),
+      );
+
+  Widget _media(
+    BlockStyle? style, {
+    required String? url,
+    required String? fit,
+    required BorderRadius? radius,
+    required Widget Function() slot,
+  }) {
     final sized = style != null &&
         (style.inset == true ||
             style.height != null ||
             style.aspectRatio != null ||
             style.flex != null);
-    final radius = block.shape == 'circle'
-        ? BorderRadius.circular(9999)
-        : BorderRadius.circular(sized ? 0 : 16);
-    final url = (block.url != null && block.url!.isNotEmpty) ? block.url : ctx.heroImageUrl;
 
     Widget child = ClipRRect(
-      borderRadius: radius,
+      borderRadius: radius ?? BorderRadius.circular(sized ? 0 : 16),
       child: url == null
-          ? _imageSlot(block)
+          ? slot()
           : _photo(
               url,
-              fit: block.fit == 'contain' ? BoxFit.contain : BoxFit.cover,
-              // A customer asset that fails to load must not blank the screen.
-              errorBuilder: (_, _, _) => _imageSlot(block),
+              fit: fit == 'contain' ? BoxFit.contain : BoxFit.cover,
+              errorBuilder: (_, _, _) => slot(),
             ),
     );
     if (!sized) child = SizedBox(height: 160, width: double.infinity, child: child);
@@ -2023,6 +2208,36 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
                 style: _textStyle(null, defaultSize: 10.5),
               ),
             ),
+    );
+  }
+
+  Widget? _toggle(ToggleBlock block, RevnixBlockScope scope, BlockStyle? style) {
+    final state = revnixToggleState(block, ctx.packages, ctx.selectedPackage);
+    if (state == null) return null;
+    void flip() => ctx.onSelect(state.target);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: flip,
+      child: _styled(
+        style,
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                revnixResolveTags(block.label, scope.package, ctx.packages),
+                textAlign: _textAlign(style?.align),
+                style: _textStyle(style),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Switch.adaptive(
+              value: state.on,
+              onChanged: (_) => flip(),
+              activeTrackColor: revnixBlockColor(ctx.doc.accent, ctx.doc),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -2326,6 +2541,16 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
 
     Widget body;
     switch (block.layout) {
+      case 'carousel':
+        final doc = ctx.doc;
+        final ink = revnixBlockColor(doc.textColor, doc) ?? const Color(0xFFFFFFFF);
+        body = _Carousel(
+          height: style?.height?.px ?? 220,
+          autoAdvance: block.autoAdvance,
+          dot: ink.withValues(alpha: ink.a * 0.3),
+          activeDot: revnixBlockColor(doc.accent, doc) ?? const Color(0xFF6478FF),
+          pages: children,
+        );
       case 'stack':
         body = Stack(
           clipBehavior: Clip.none,
@@ -2676,6 +2901,7 @@ bool revnixHasCloseAction(List<PaywallBlock> blocks) => blocks.any((block) {
       if (block is CardBlock) {
         return block.repeat == null &&
             block.packageIndex == null &&
+            block.layout != 'carousel' &&
             revnixHasCloseAction(block.children);
       }
       return false;
@@ -2774,6 +3000,131 @@ class _RevnixBlockButtonState extends State<RevnixBlockButton> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _Countdown extends StatefulWidget {
+  const _Countdown({required this.block, required this.shownAt, required this.builder});
+
+  final TimerBlock block;
+  final DateTime? shownAt;
+  final Widget Function(String text) builder;
+
+  @override
+  State<_Countdown> createState() => _CountdownState();
+}
+
+class _CountdownState extends State<_Countdown> {
+  late final DateTime _start = widget.shownAt ?? DateTime.now();
+  late final Timer _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _tick.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final block = widget.block;
+    final remaining = revnixTimerRemaining(block, _start, DateTime.now());
+    if (remaining > 0) {
+      return widget.builder(revnixFormatCountdown(block.format ?? '{hh}:{mm}:{ss}', remaining));
+    }
+    final expired = block.expiredText;
+    return expired == null ? const SizedBox.shrink() : widget.builder(expired);
+  }
+}
+
+class _Carousel extends StatefulWidget {
+  const _Carousel({
+    required this.height,
+    required this.autoAdvance,
+    required this.dot,
+    required this.activeDot,
+    required this.pages,
+  });
+
+  final double height;
+  final int? autoAdvance;
+  final Color dot;
+  final Color activeDot;
+  final List<Widget> pages;
+
+  @override
+  State<_Carousel> createState() => _CarouselState();
+}
+
+class _CarouselState extends State<_Carousel> {
+  final PageController _controller = PageController();
+  Timer? _advance;
+  int _page = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    final seconds = widget.autoAdvance;
+    if (seconds == null || seconds < 1) return;
+    _advance = Timer.periodic(Duration(seconds: seconds), (_) {
+      final count = widget.pages.length;
+      if (count < 2 || !_controller.hasClients) return;
+      _controller.animateToPage(
+        (_page + 1) % count,
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeInOut,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _advance?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final count = widget.pages.length;
+    return SizedBox(
+      height: widget.height,
+      child: Stack(
+        children: [
+          PageView(
+            controller: _controller,
+            onPageChanged: (page) => setState(() => _page = page),
+            children: widget.pages,
+          ),
+          if (count > 1)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 8,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  for (var i = 0; i < count; i++)
+                    Container(
+                      width: 6,
+                      height: 6,
+                      margin: const EdgeInsets.symmetric(horizontal: 3),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: i == _page ? widget.activeDot : widget.dot,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }

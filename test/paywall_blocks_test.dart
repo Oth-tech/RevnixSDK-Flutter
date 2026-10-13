@@ -247,7 +247,7 @@ void main() {
           {
             'id': 'c',
             'type': 'card',
-            'layout': 'carousel',
+            'layout': 'masonry',
             'children': [
               {'id': 'k', 'type': 'text', 'text': 'kept'},
             ],
@@ -903,6 +903,23 @@ void main() {
       expect(fallback, findsNothing);
     });
 
+    testWidgets('a close inside a carousel does not suppress the fallback', (tester) async {
+      final doc = PaywallBlockDoc.parse(docWith([
+        {
+          'id': 'c',
+          'type': 'card',
+          'layout': 'carousel',
+          'children': [
+            {'id': 'p1', 'type': 'text', 'text': 'Page one'},
+            {'id': 'x', 'type': 'text', 'text': 'X', 'action': 'close'},
+          ],
+        },
+      ]));
+      expect(revnixHasCloseAction(doc!.blocks), isFalse);
+      await tester.pumpWidget(host(doc, onClose: () {}));
+      expect(fallback, findsOneWidget);
+    });
+
     testWidgets('an unknown action value leaves the element decorative', (tester) async {
       // Forward compatibility both ways: an action this SDK does not know must
       // not be mistaken for a close, nor suppress the fallback.
@@ -911,6 +928,163 @@ void main() {
       ]));
       await tester.pumpWidget(host(doc!, onClose: () {}));
       expect(fallback, findsOneWidget);
+    });
+  });
+
+  group('timer, video, toggle and carousel', () {
+    test('parse into their own types and an unknown type is still skipped', () {
+      final doc = PaywallBlockDoc.parse(
+        docWith([
+          {'id': 't1', 'type': 'timer', 'duration': 600, 'format': '{mm}:{ss}', 'expiredText': 'Gone'},
+          {'id': 'v1', 'type': 'video', 'url': 'https://x/a.mp4', 'poster': 'https://x/a.jpg', 'fit': 'contain'},
+          {'id': 'g1', 'type': 'toggle', 'label': 'Free trial', 'onPackageIndex': 0, 'offPackageIndex': 1},
+          {'id': 'c1', 'type': 'card', 'layout': 'carousel', 'autoAdvance': 4, 'children': <Object?>[]},
+          {'id': 'x', 'type': 'hologram'},
+        ]),
+      )!;
+      final timer = doc.blocks[0] as TimerBlock;
+      expect(timer.duration, 600);
+      expect(timer.format, '{mm}:{ss}');
+      expect(timer.expiredText, 'Gone');
+      final video = doc.blocks[1] as VideoBlock;
+      expect(video.poster, 'https://x/a.jpg');
+      expect(video.fit, 'contain');
+      final toggle = doc.blocks[2] as ToggleBlock;
+      expect(toggle.label, 'Free trial');
+      expect(toggle.offPackageIndex, 1);
+      final card = doc.blocks[3] as CardBlock;
+      expect(card.layout, 'carousel');
+      expect(card.autoAdvance, 4);
+      expect(doc.blocks[4], isA<UnknownBlock>());
+    });
+
+    test('countdown formatting matches the contract examples', () {
+      expect(revnixFormatCountdown('{hh}:{mm}:{ss}', 3725), '01:02:05');
+      expect(revnixFormatCountdown('{d}d {hh}:{mm}:{ss}', 90061), '1d 01:01:01');
+      expect(revnixFormatCountdown('{hh}:{mm}', 90061), '25:01');
+      expect(revnixFormatCountdown('{mm}:{ss} {mm}', 61), '01:01 01');
+      expect(revnixFormatCountdown('{mm}:{ss}', 5400), '90:00');
+      expect(revnixFormatCountdown('{mm}:{ss}', 7200), '120:00');
+      expect(revnixFormatCountdown('{ss}s', 125), '125s');
+    });
+
+    test('remaining counts a duration from first display and expires a bad endsAt', () {
+      final shown = DateTime.utc(2026, 1, 1);
+      const timer = TimerBlock(id: 't', duration: 600);
+      expect(revnixTimerRemaining(timer, shown, shown.add(const Duration(seconds: 90))), 510);
+      expect(revnixTimerRemaining(timer, shown, shown.add(const Duration(hours: 1))), 0);
+      const fixed = TimerBlock(id: 't', endsAt: '2026-01-01T00:01:00Z');
+      expect(revnixTimerRemaining(fixed, shown, shown), 60);
+      const broken = TimerBlock(id: 't', endsAt: 'soon');
+      expect(revnixTimerRemaining(broken, shown, shown), 0);
+    });
+
+    test('toggle is ON on its trial package and a tap selects the other index', () {
+      const toggle = ToggleBlock(id: 'g', label: 'Trial', onPackageIndex: 0, offPackageIndex: 1);
+      final onState = revnixToggleState(toggle, packages, annual)!;
+      expect(onState.on, isTrue);
+      expect(onState.target, 'monthly');
+      final offState = revnixToggleState(toggle, packages, monthly)!;
+      expect(offState.on, isFalse);
+      expect(offState.target, 'annual');
+      const unreachable = ToggleBlock(id: 'g', label: 'Trial', onPackageIndex: 0, offPackageIndex: 5);
+      expect(revnixToggleState(unreachable, packages, annual), isNull);
+    });
+
+    testWidgets('a toggle flips the selected package through the plan-card path', (tester) async {
+      String? selected;
+      final doc = PaywallBlockDoc.parse(
+        docWith([
+          {'id': 'g', 'type': 'toggle', 'label': 'Trial {price}', 'onPackageIndex': 0, 'offPackageIndex': 1},
+        ]),
+      );
+      await tester.pumpWidget(host(doc!, onSelect: (id) => selected = id));
+      expect(find.text(r'Trial $59.99'), findsOneWidget);
+      expect(tester.widget<Switch>(find.byType(Switch)).value, isTrue);
+      await tester.tap(find.byType(Switch));
+      expect(selected, 'monthly');
+      await tester.pumpWidget(host(doc, onSelect: (id) => selected = id, selectedPackageId: 'monthly'));
+      expect(tester.widget<Switch>(find.byType(Switch)).value, isFalse);
+      await tester.tap(find.text(r'Trial $9.99'));
+      expect(selected, 'annual');
+    });
+
+    testWidgets('a toggle naming an index the offering lacks is not drawn', (tester) async {
+      final doc = PaywallBlockDoc.parse(
+        docWith([
+          {'id': 'g', 'type': 'toggle', 'label': 'Trial', 'onPackageIndex': 0, 'offPackageIndex': 9},
+        ]),
+      );
+      await tester.pumpWidget(host(doc!));
+      expect(find.byType(Switch), findsNothing);
+    });
+
+    testWidgets('a carousel pages its children, draws dots and auto-advances', (tester) async {
+      final doc = PaywallBlockDoc.parse(
+        docWith([
+          {
+            'id': 'c',
+            'type': 'card',
+            'layout': 'carousel',
+            'autoAdvance': 2,
+            'children': [
+              {'id': 'p1', 'type': 'text', 'text': 'Page one'},
+              {'id': 'p2', 'type': 'text', 'text': 'Page two'},
+            ],
+          },
+        ]),
+      );
+      await tester.pumpWidget(host(doc!));
+      expect(find.byType(PageView), findsOneWidget);
+      expect(tester.getSize(find.byType(PageView)).height, 220);
+      expect(find.text('Page one'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+      expect(find.text('Page two'), findsOneWidget);
+      expect(find.text('Page one'), findsNothing);
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+      expect(find.text('Page one'), findsOneWidget);
+    });
+
+    testWidgets('a timer draws like text, then its expired text or nothing at zero', (tester) async {
+      final doc = PaywallBlockDoc.parse(
+        docWith([
+          {'id': 'a', 'type': 'timer', 'duration': 7230, 'format': 'Ends in {hh}:{mm}'},
+          {'id': 'b', 'type': 'timer', 'endsAt': '2000-01-01T00:00:00Z', 'expiredText': 'Expired'},
+          {'id': 'c', 'type': 'timer', 'endsAt': '2000-01-01T00:00:00Z', 'format': 'hidden {ss}'},
+        ]),
+      );
+      await tester.pumpWidget(host(doc!));
+      expect(find.text('Ends in 02:00'), findsOneWidget);
+      expect(find.text('Expired'), findsOneWidget);
+      expect(find.textContaining('hidden'), findsNothing);
+    });
+
+    testWidgets('a video draws as its poster box and says so', (tester) async {
+      final messages = <String>[];
+      final doc = PaywallBlockDoc.parse(
+        docWith([
+          {'id': 'v', 'type': 'video', 'url': 'https://x/a.mp4'},
+        ]),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: RevnixPaywallBlockScreen(
+              ctx: BlockRenderContext(
+                doc: doc!,
+                packages: packages,
+                onPurchase: (_) {},
+                onSelect: (_) {},
+                onDiagnostic: messages.add,
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(messages, contains('video drawn as its poster: no built-in player'));
+      expect(find.byType(Image), findsNothing);
     });
   });
 }
