@@ -1,8 +1,15 @@
 ## Unreleased
 
 - **Paywall blocks: `timer`, `video`, `toggle` and the card `carousel` layout.** Countdown to a date or from when the paywall opens, a video drawn as its poster (Flutter has no built-in player), a free-trial switch that flips the selected package, and swipeable pages with dots and optional auto-advance.
+
+## 1.6.0
+
 - **`flushEvents()` and `preload(placementKeys)`.** Events are now batched and persisted, and placements resolve cache-first, via the 1.6.0 natives.
 - Release automation: `release.yml` lands the version bump and tags it; `publish.yml` publishes the tag to pub.dev through automated publishing.
+
+### Changed
+
+- Native SDKs: RevnixSDK-iOS d1979df → ef5d1a9, RevnixSDK-Android 0c952db → 1b6799a.
 
 ## 1.5.0
 
