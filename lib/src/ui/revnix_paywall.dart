@@ -278,6 +278,7 @@ class RevnixPaywall extends StatefulWidget {
 
 class _RevnixPaywallState extends State<RevnixPaywall> {
   String? _internalSelected;
+  final DateTime _shownAt = DateTime.now();
 
   @override
   void initState() {
@@ -466,6 +467,7 @@ class _RevnixPaywallState extends State<RevnixPaywall> {
             : (message) => widget.onDiagnostic!(
                   RevnixDiagnostic(op: 'paywall.render', message: message),
                 ),
+        shownAt: _shownAt,
       ),
     );
   }

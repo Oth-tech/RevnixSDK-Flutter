@@ -1,5 +1,7 @@
 ## Unreleased
 
+- **Paywall blocks: `timer`, `video`, `toggle` and the card `carousel` layout.** Countdown to a date or from when the paywall opens, a video drawn as its poster (Flutter has no built-in player), a free-trial switch that flips the selected package, and swipeable pages with dots and optional auto-advance.
+
 ## 1.6.0
 
 - **`flushEvents()` and `preload(placementKeys)`.** Events are now batched and persisted, and placements resolve cache-first, via the 1.6.0 natives.

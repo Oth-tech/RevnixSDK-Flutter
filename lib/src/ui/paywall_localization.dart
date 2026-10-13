@@ -174,6 +174,29 @@ PaywallBlock _localizeBlock(PaywallBlock block, String Function(String, String) 
       action: block.action,
     );
   }
+  if (block is TimerBlock) {
+    return TimerBlock(
+      id: block.id,
+      endsAt: block.endsAt,
+      duration: block.duration,
+      format: opt('format', block.format),
+      expiredText: opt('expiredText', block.expiredText),
+      style: block.style,
+      selectedStyle: block.selectedStyle,
+      visibility: block.visibility,
+    );
+  }
+  if (block is ToggleBlock) {
+    return ToggleBlock(
+      id: block.id,
+      label: at('label', block.label),
+      onPackageIndex: block.onPackageIndex,
+      offPackageIndex: block.offPackageIndex,
+      style: block.style,
+      selectedStyle: block.selectedStyle,
+      visibility: block.visibility,
+    );
+  }
   if (block is ListBlock) {
     var index = -1;
     return ListBlock(
@@ -215,6 +238,7 @@ PaywallBlock _localizeBlock(PaywallBlock block, String Function(String, String) 
       packageIndex: block.packageIndex,
       columns: block.columns,
       gridColumns: block.gridColumns,
+      autoAdvance: block.autoAdvance,
       children: block.children.map((c) => _localizeBlock(c, lookup)).toList(),
       style: block.style,
       selectedStyle: block.selectedStyle,
