@@ -4,7 +4,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'revnix_flutter'
-  s.version          = '1.6.0'
+  s.version          = '1.7.0'
   s.summary          = 'Revnix subscriptions and entitlements for Flutter.'
   s.description      = <<-DESC
 Flutter plugin for Revnix: in-app subscriptions, entitlements, placements
