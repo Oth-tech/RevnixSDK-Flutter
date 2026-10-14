@@ -284,6 +284,9 @@ PaywallBlockDoc revnixLocalizeDoc(PaywallBlockDoc doc, String? locale) {
     accentInk: doc.accentInk,
     fontFamily: doc.fontFamily,
     blocks: doc.blocks.map((b) => _localizeBlock(b, lookup)).toList(),
+    screens: [
+      for (final screen in doc.screens) screen.map((b) => _localizeBlock(b, lookup)).toList(),
+    ],
     localization: PaywallLocalization(
       defaultLocale: chain.first,
       tables: localization.tables,

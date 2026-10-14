@@ -279,6 +279,13 @@ class RevnixPaywall extends StatefulWidget {
 class _RevnixPaywallState extends State<RevnixPaywall> {
   String? _internalSelected;
   final DateTime _shownAt = DateTime.now();
+  int _screen = 0;
+
+  @override
+  void didUpdateWidget(RevnixPaywall oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.config, widget.config)) _screen = 0;
+  }
 
   @override
   void initState() {
@@ -468,6 +475,8 @@ class _RevnixPaywallState extends State<RevnixPaywall> {
                   RevnixDiagnostic(op: 'paywall.render', message: message),
                 ),
         shownAt: _shownAt,
+        screenIndex: _screen,
+        onScreen: (index) => setState(() => _screen = index),
       ),
     );
   }

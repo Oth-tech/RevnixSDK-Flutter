@@ -435,11 +435,23 @@ class BlockListItem {
 /// new block type would have parsed to [UnknownBlock] and vanished from the
 /// screen instead — worse than the bug this fixes.
 enum BlockAction {
-  close;
+  close,
+
+  /// Onboarding: show the following screen (the last intro screen's next is
+  /// the paywall). Inert anywhere it has no meaning.
+  next,
+
+  /// Onboarding: show the previous intro screen. Inert anywhere it has no
+  /// meaning.
+  back;
 
   /// An action this SDK does not know leaves the element inert.
-  static BlockAction? parse(String? value) =>
-      value == 'close' ? BlockAction.close : null;
+  static BlockAction? parse(String? value) => switch (value) {
+        'close' => BlockAction.close,
+        'next' => BlockAction.next,
+        'back' => BlockAction.back,
+        _ => null,
+      };
 }
 
 /// When a block is drawn, relative to the selected context it sits in
@@ -739,6 +751,7 @@ class PaywallBlockDoc {
     required this.accentInk,
     this.fontFamily,
     required this.blocks,
+    this.screens = const [],
     this.localization = const PaywallLocalization(),
   });
 
@@ -760,6 +773,10 @@ class PaywallBlockDoc {
   final String accentInk;
   final String? fontFamily;
   final List<PaywallBlock> blocks;
+
+  /// Onboarding intro screens, shown in order before [blocks], which is always
+  /// the last screen. Empty for a paywall with no onboarding.
+  final List<List<PaywallBlock>> screens;
 
   /// REV-271: the design's translations. Empty for a paywall published in one
   /// language, which is every paywall written before this shipped —
@@ -789,6 +806,11 @@ class PaywallBlockDoc {
       accentInk: str(value['accentInk']) ?? '#FFFFFF',
       fontFamily: str(value['fontFamily']),
       blocks: raw.map(_parseBlock).toList(),
+      screens: [
+        if (value['screens'] case final List<Object?> screens)
+          for (final screen in screens)
+            if (screen is List && screen.isNotEmpty) screen.map(_parseBlock).toList(),
+      ],
       localization: PaywallLocalization.parse(value),
     );
   }
@@ -1615,6 +1637,8 @@ class BlockRenderContext {
     this.onClose,
     this.onDiagnostic,
     this.shownAt,
+    this.screenIndex = 0,
+    this.onScreen,
   });
 
   final PaywallBlockDoc doc;
@@ -1659,6 +1683,19 @@ class BlockRenderContext {
   /// When this paywall view was first displayed — what a `duration` timer
   /// counts from. Null means each timer counts from its own first build.
   final DateTime? shownAt;
+
+  /// Which onboarding screen is showing: an index into [PaywallBlockDoc.screens],
+  /// or past its end for the paywall itself.
+  final int screenIndex;
+
+  /// Moves to another screen. Null skips the intro screens entirely: a host
+  /// that cannot navigate opens on the paywall, like an SDK that predates them.
+  final void Function(int screenIndex)? onScreen;
+
+  List<PaywallBlock> get screenBlocks =>
+      onScreen != null && screenIndex < doc.screens.length
+          ? doc.screens[screenIndex]
+          : doc.blocks;
 
   /// The package the screen treats as selected: [selectedPackageId] when the
   /// offering carries it, else the first package (REV-262 §1). Root-level
@@ -1725,9 +1762,10 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
     final body = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
-      children: _renderList(doc.blocks, RevnixBlockScope.root(ctx.selectedPackage)),
+      children: _renderList(ctx.screenBlocks, RevnixBlockScope.root(ctx.selectedPackage)),
     );
     final close = _fallbackClose(context);
+    final safeTop = MediaQuery.maybeViewPaddingOf(context)?.top ?? 0;
 
     if (doc.layout == 'canvas') {
       return LayoutBuilder(
@@ -1798,6 +1836,7 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
               children: [
                 ...art,
                 _scroller(context, canvas, fits: fits),
+                ..._progressDots(20),
                 ...close,
               ],
             ),
@@ -1811,7 +1850,8 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
       body,
       padding: const EdgeInsets.all(20),
     );
-    if (art.isEmpty && close.isEmpty) {
+    final dots = _progressDots(20 + safeTop);
+    if (art.isEmpty && close.isEmpty && dots.isEmpty) {
       return Container(color: background, child: scroller);
     }
     // The art layers fill the screen and the content scrolls over them, which
@@ -1820,9 +1860,22 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
       color: background,
       child: Stack(
         fit: StackFit.expand,
-        children: [...art, scroller, ...close],
+        children: [...art, scroller, ...dots, ...close],
       ),
     );
+  }
+
+  List<Widget> _progressDots(double top) {
+    final count = ctx.doc.screens.length + 1;
+    if (ctx.onScreen == null || ctx.screenIndex >= count - 1) return const [];
+    return [
+      Positioned(
+        top: top,
+        left: 0,
+        right: 0,
+        child: IgnorePointer(child: _dotRow(ctx.doc, count, ctx.screenIndex)),
+      ),
+    ];
   }
 
   /// The paywall's scroll view (REV-262 §3): no scrollbar, no overscroll
@@ -1842,6 +1895,7 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
         overscroll: false,
       ),
       child: SingleChildScrollView(
+        key: ValueKey(ctx.screenIndex),
         physics: fits == true
             ? const NeverScrollableScrollPhysics()
             : const RevnixPaywallScrollPhysics(),
@@ -1866,7 +1920,7 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
   /// clock (REV-262 §3).
   List<Widget> _fallbackClose(BuildContext context) {
     final onClose = ctx.onClose;
-    if (onClose == null || revnixHasCloseAction(ctx.doc.blocks)) return const [];
+    if (onClose == null || revnixHasCloseAction(ctx.screenBlocks)) return const [];
     final ink = revnixBlockColor(ctx.doc.textColor, ctx.doc) ?? const Color(0xFFFFFFFF);
     final safeTop = MediaQuery.maybeViewPaddingOf(context)?.top ?? 0;
     return [
@@ -2043,7 +2097,7 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
   Widget? _render(PaywallBlock block, RevnixBlockScope scope, BlockStyle? style) {
     final doc = ctx.doc;
     if (block is TextBlock) {
-      return _closeOnTap(
+      return _actionOnTap(
         block.action,
         _text(revnixResolveTags(block.text, scope.package, ctx.packages), style),
       );
@@ -2059,7 +2113,7 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
         builder: (text) => _text(text, style),
       );
     }
-    if (block is ImageBlock) return _closeOnTap(block.action, _image(block, style));
+    if (block is ImageBlock) return _actionOnTap(block.action, _image(block, style));
     if (block is VideoBlock) {
       ctx.onDiagnostic?.call('video drawn as its poster: no built-in player');
       final poster = block.poster;
@@ -2288,20 +2342,29 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
     );
   }
 
-  /// Makes an element the paywall's dismiss target when the design marks it as
-  /// one (REV-252). A block with no close action is returned untouched, so it
-  /// never intercepts a tap meant for what sits behind it.
-  Widget _closeOnTap(BlockAction? action, Widget child) {
-    final onClose = ctx.onClose;
-    if (action != BlockAction.close || onClose == null) return child;
+  VoidCallback? _actionHandler(BlockAction? action) {
+    final onScreen = ctx.onScreen;
+    final index = ctx.screenIndex;
+    final intro = onScreen != null && index < ctx.doc.screens.length;
+    return switch (action) {
+      BlockAction.close => ctx.onClose,
+      BlockAction.next when intro => () => onScreen(index + 1),
+      BlockAction.back when intro && index > 0 => () => onScreen(index - 1),
+      _ => null,
+    };
+  }
+
+  Widget _actionOnTap(BlockAction? action, Widget child) {
+    final onTap = _actionHandler(action);
+    if (onTap == null) return child;
     return Semantics(
       button: true,
-      label: 'Close',
+      label: action == BlockAction.close ? 'Close' : null,
       child: GestureDetector(
         // The whole box is the target, not just the glyph: a close chip is
         // mostly padding, and a bare × is well under the 48dp tap minimum.
         behavior: HitTestBehavior.opaque,
-        onTap: onClose,
+        onTap: onTap,
         child: child,
       ),
     );
@@ -2313,6 +2376,8 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
     // takes no accent fill: the CTA must stay the one accented thing on the
     // screen, or a "Not now" competes with "Subscribe" for the eye.
     final closes = block.action == BlockAction.close && ctx.onClose != null;
+    final buys = block.action == null || (block.action == BlockAction.close && !closes);
+    final onAction = _actionHandler(block.action);
     // `skipDecoration` hands the box back to us, so the fill is resolved here
     // rather than by `_styled` — which is why a gradient CTA used to flatten to
     // the plain accent.
@@ -2336,15 +2401,15 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
       RevnixBlockButton(
         // A "Not now" keeps working mid-purchase: only the buying buttons
         // wait for the store (REV-262 §4).
-        loading: ctx.loading && !closes,
+        loading: ctx.loading && buys,
         spinnerColor: ink,
         fill: fill,
         radius: BorderRadius.circular(style?.radius ?? 12),
         height: style?.height?.px,
         padding: EdgeInsets.symmetric(horizontal: 16, vertical: sized ? 0 : 15),
         onTap: () {
-          if (closes) {
-            ctx.onClose?.call();
+          if (!buys) {
+            onAction?.call();
             return;
           }
           final id = ctx.selectedPackage?.packageId;
@@ -2542,13 +2607,10 @@ class RevnixPaywallBlockScreen extends StatelessWidget {
     Widget body;
     switch (block.layout) {
       case 'carousel':
-        final doc = ctx.doc;
-        final ink = revnixBlockColor(doc.textColor, doc) ?? const Color(0xFFFFFFFF);
         body = _Carousel(
           height: style?.height?.px ?? 220,
           autoAdvance: block.autoAdvance,
-          dot: ink.withValues(alpha: ink.a * 0.3),
-          activeDot: revnixBlockColor(doc.accent, doc) ?? const Color(0xFF6478FF),
+          doc: ctx.doc,
           pages: children,
         );
       case 'stack':
@@ -3048,15 +3110,13 @@ class _Carousel extends StatefulWidget {
   const _Carousel({
     required this.height,
     required this.autoAdvance,
-    required this.dot,
-    required this.activeDot,
+    required this.doc,
     required this.pages,
   });
 
   final double height;
   final int? autoAdvance;
-  final Color dot;
-  final Color activeDot;
+  final PaywallBlockDoc doc;
   final List<Widget> pages;
 
   @override
@@ -3108,26 +3168,33 @@ class _CarouselState extends State<_Carousel> {
               left: 0,
               right: 0,
               bottom: 8,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  for (var i = 0; i < count; i++)
-                    Container(
-                      width: 6,
-                      height: 6,
-                      margin: const EdgeInsets.symmetric(horizontal: 3),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: i == _page ? widget.activeDot : widget.dot,
-                      ),
-                    ),
-                ],
-              ),
+              child: _dotRow(widget.doc, count, _page),
             ),
         ],
       ),
     );
   }
+}
+
+Widget _dotRow(PaywallBlockDoc doc, int count, int active) {
+  final ink = revnixBlockColor(doc.textColor, doc) ?? const Color(0xFFFFFFFF);
+  final dot = ink.withValues(alpha: ink.a * 0.3);
+  final activeDot = revnixBlockColor(doc.accent, doc) ?? const Color(0xFF6478FF);
+  return Row(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      for (var i = 0; i < count; i++)
+        Container(
+          width: 6,
+          height: 6,
+          margin: const EdgeInsets.symmetric(horizontal: 3),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: i == active ? activeDot : dot,
+          ),
+        ),
+    ],
+  );
 }
 
 /// Scroll physics for a paywall (REV-262 §3): the platform's own feel while

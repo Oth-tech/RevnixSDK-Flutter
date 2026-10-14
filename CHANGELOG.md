@@ -1,5 +1,9 @@
 ## Unreleased
 
+### Added
+
+- **Paywall blocks: onboarding screens.** A designed paywall can open on intro `screens` with progress dots, moved through by the new `next` and `back` actions, before the paywall itself; one display, one view report, and older SDKs open straight on the paywall.
+
 ## 1.7.0
 
 - **`deviceIntegrity` option on `configure`.** Opt in to Apple App Attest / Google Play Integrity evidence on install reports.
