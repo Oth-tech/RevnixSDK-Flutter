@@ -1,8 +1,14 @@
 ## Unreleased
 
+## 1.8.0
+
 ### Added
 
 - **Paywall blocks: onboarding screens.** A designed paywall can open on intro `screens` with progress dots, moved through by the new `next` and `back` actions, before the paywall itself; one display, one view report, and older SDKs open straight on the paywall.
+
+### Changed
+
+- Native SDKs: RevnixSDK-iOS d2bac3a → 56a5ac8, RevnixSDK-Android 8077d6e → 8e29fcd.
 
 ## 1.7.0
 
