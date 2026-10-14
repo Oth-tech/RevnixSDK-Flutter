@@ -1087,4 +1087,156 @@ void main() {
       expect(find.byType(Image), findsNothing);
     });
   });
+
+  group('onboarding screens', () {
+    final onboarding = docWith(
+      [
+        {'id': 'p_t', 'type': 'text', 'text': 'Go Pro'},
+        {'id': 'p_b', 'type': 'button', 'label': 'Start free trial'},
+      ],
+      {
+        'screens': [
+          [
+            {'id': 's1_t', 'type': 'text', 'text': 'Welcome'},
+            {'id': 's1_n', 'type': 'button', 'label': 'Continue', 'action': 'next'},
+            {'id': 's1_x', 'type': 'text', 'text': 'X', 'action': 'close'},
+          ],
+          [
+            {'id': 's2_t', 'type': 'text', 'text': 'Track every workout'},
+            {'id': 's2_b', 'type': 'text', 'text': 'Back', 'action': 'back'},
+            {'id': 's2_n', 'type': 'button', 'label': 'Next', 'action': 'next'},
+          ],
+        ],
+        'locales': {
+          'es': {'s1_t.text': 'Bienvenido', 's1_n.label': 'Continuar'},
+        },
+      },
+    );
+    final dots = find.byWidgetPredicate((w) =>
+        w is Container &&
+        w.constraints?.maxWidth == 6 &&
+        (w.decoration as BoxDecoration?)?.shape == BoxShape.circle);
+
+    Widget paywall({
+      String? locale,
+      void Function(String)? onPurchase,
+      VoidCallback? onClose,
+    }) =>
+        MaterialApp(
+          home: RevnixPaywall(
+            config: PaywallConfig(
+              template: 'classic',
+              headline: 'Go Pro',
+              ctaLabel: 'Continue',
+              blocks: onboarding,
+            ),
+            packages: packages,
+            disableViewTracking: true,
+            locale: locale,
+            onPurchase: onPurchase ?? (_) {},
+            onClose: onClose,
+          ),
+        );
+
+    test('parses screens and the next/back actions, dropping malformed screens', () {
+      final doc = PaywallBlockDoc.parse({
+        ...onboarding,
+        'screens': [
+          ...onboarding['screens']! as List,
+          'not a screen',
+          <Object?>[],
+          [
+            {'id': 'u', 'type': 'hologram'},
+          ],
+        ],
+      })!;
+      expect(doc.screens, hasLength(3));
+      expect((doc.screens[0][1] as ButtonBlock).action, BlockAction.next);
+      expect((doc.screens[1][1] as TextBlock).action, BlockAction.back);
+      expect(doc.screens[2].single, isA<UnknownBlock>());
+      expect(PaywallBlockDoc.parse(docWith([{'id': 't', 'type': 'text', 'text': 'a'}]))!.screens, isEmpty);
+    });
+
+    testWidgets('next and back navigate, never buy, and dots show only on intro screens', (tester) async {
+      final purchased = <String>[];
+      await tester.pumpWidget(paywall(onPurchase: purchased.add));
+      expect(find.text('Welcome'), findsOneWidget);
+      expect(dots, findsNWidgets(3));
+
+      await tester.tap(find.text('Continue'));
+      await tester.pump();
+      expect(find.text('Track every workout'), findsOneWidget);
+      expect(dots, findsNWidgets(3));
+
+      await tester.tap(find.text('Back'));
+      await tester.pump();
+      expect(find.text('Welcome'), findsOneWidget);
+
+      await tester.tap(find.text('Continue'));
+      await tester.pump();
+      await tester.tap(find.text('Next'));
+      await tester.pump();
+      expect(find.text('Go Pro'), findsOneWidget);
+      expect(dots, findsNothing);
+      expect(purchased, isEmpty);
+
+      await tester.tap(find.text('Start free trial'));
+      expect(purchased, ['annual']);
+    });
+
+    testWidgets('next and back on the paywall itself are inert', (tester) async {
+      final purchased = <String>[];
+      final doc = PaywallBlockDoc.parse(docWith([
+        {'id': 'n', 'type': 'button', 'label': 'Onward', 'action': 'next'},
+        {'id': 'b', 'type': 'text', 'text': 'Back', 'action': 'back'},
+      ]));
+      await tester.pumpWidget(host(doc!, onPurchase: purchased.add));
+      await tester.tap(find.text('Onward'));
+      await tester.tap(find.text('Back'));
+      expect(purchased, isEmpty);
+      expect(find.text('Onward'), findsOneWidget);
+    });
+
+    testWidgets('the locale overlay reaches intro screen blocks', (tester) async {
+      final localized = revnixLocalizeDoc(PaywallBlockDoc.parse(onboarding)!, 'es');
+      expect((localized.screens[0][0] as TextBlock).text, 'Bienvenido');
+      await tester.pumpWidget(paywall(locale: 'es'));
+      expect(find.text('Bienvenido'), findsOneWidget);
+      expect(find.text('Continuar'), findsOneWidget);
+    });
+
+    testWidgets('a host without onScreen opens on the paywall, with no dots', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: RevnixPaywallBlockScreen(
+              ctx: BlockRenderContext(
+                doc: PaywallBlockDoc.parse(onboarding)!,
+                packages: packages,
+                onPurchase: (_) {},
+                onSelect: (_) {},
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(find.text('Go Pro'), findsOneWidget);
+      expect(find.text('Welcome'), findsNothing);
+      expect(dots, findsNothing);
+    });
+
+    testWidgets('the fallback close follows the current screen', (tester) async {
+      final doc = PaywallBlockDoc.parse(onboarding)!;
+      expect(revnixHasCloseAction(doc.screens[0]), isTrue);
+      expect(revnixHasCloseAction(doc.screens[1]), isFalse);
+      var closed = 0;
+      await tester.pumpWidget(paywall(onClose: () => closed += 1));
+      expect(find.text('\u00d7'), findsNothing);
+      await tester.tap(find.text('X'));
+      expect(closed, 1);
+      await tester.tap(find.text('Continue'));
+      await tester.pump();
+      expect(find.text('\u00d7'), findsOneWidget);
+    });
+  });
 }
