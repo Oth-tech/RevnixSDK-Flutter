@@ -1,5 +1,11 @@
 ## Unreleased
 
+## 1.8.1
+
+### Changed
+
+- Native SDKs: RevnixSDK-iOS 56a5ac8 → 4e83602, RevnixSDK-Android 8e29fcd → 8e29fcd.
+
 ## 1.8.0
 
 ### Added
