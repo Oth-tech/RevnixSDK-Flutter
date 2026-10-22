@@ -81,6 +81,8 @@ if (await revnix.isEntitled('pro')) {
 
 Your API key and deployment URL are in the dashboard under Settings. See [API keys](https://www.revnix.io/docs/api-keys).
 
+On Android, `collectAdvertisingId: true` in `configure` opts in to Google Advertising ID collection. Add `com.google.android.gms:play-services-ads-identifier` and the `com.google.android.gms.permission.AD_ID` permission to your app; when limit-ad-tracking is on no id is sent and a previously sent id is cleared; if play-services-ads-identifier is missing no id is collected and the `diagnostics` stream reports it. Ignored on iOS.
+
 ## Purchases and entitlements without server code
 
 **Revnix handles the hard parts of subscriptions in a small, developer-friendly plugin.**

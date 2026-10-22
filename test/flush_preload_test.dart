@@ -60,5 +60,35 @@ void main() {
         [false, true, false],
       );
     });
+
+    test('configure carries collectAdvertisingId, false by default', () async {
+      const channel = MethodChannel('test.revnix/advertising-id');
+      addTearDown(() => TestDefaultBinaryMessengerBinding
+          .instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null));
+      final configures = <Object?>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (received) async {
+        if (received.method == 'configure') configures.add(received.arguments);
+        return null;
+      });
+
+      await RevnixClient.configure(
+        apiKey: 'rvx_pk_test',
+        baseUrl: 'https://x.convex.site',
+        collectAdvertisingId: true,
+        channel: channel,
+      );
+      await RevnixClient.configure(
+        apiKey: 'rvx_pk_test',
+        baseUrl: 'https://x.convex.site',
+        channel: channel,
+      );
+
+      expect(
+        configures.map((a) => (a as Map)['collectAdvertisingId']),
+        [true, false],
+      );
+    });
   });
 }
