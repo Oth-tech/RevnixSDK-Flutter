@@ -88,6 +88,12 @@ class RevnixClient {
   /// [deviceIntegrity] opts in to Apple App Attest / Google Play Integrity
   /// evidence on install reports; pairs with "Require device integrity" in
   /// the dashboard.
+  ///
+  /// [collectAdvertisingId] (Android only) opts in to Google Advertising ID
+  /// collection; the app must add play-services-ads-identifier and the AD_ID
+  /// permission. When limit-ad-tracking is on no id is sent and a previously
+  /// sent id is cleared. If play-services-ads-identifier is missing no id is
+  /// collected and the diagnostics stream reports it.
   static Future<RevnixClient> configure({
     required String apiKey,
     required String baseUrl,
@@ -100,6 +106,7 @@ class RevnixClient {
     bool skan = true,
     Duration? attWaitTimeout,
     bool deviceIntegrity = false,
+    bool collectAdvertisingId = false,
     @visibleForTesting MethodChannel? channel,
   }) async {
     final client = RevnixClient._(channel ?? _defaultChannel);
@@ -115,6 +122,7 @@ class RevnixClient {
       'skan': skan,
       'attWaitTimeoutMs': ?attWaitTimeout?.inMilliseconds,
       'deviceIntegrity': deviceIntegrity,
+      'collectAdvertisingId': collectAdvertisingId,
     });
     _instance = client;
     return client;
