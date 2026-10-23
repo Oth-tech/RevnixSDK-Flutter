@@ -55,8 +55,9 @@ class RevnixClient {
   /// Configure once at app startup.
   ///
   /// Use a **publishable** key (`rvx_pk_…`). Secret keys must never ship in a
-  /// binary, so identify/alias are server-proxied by design and are not
-  /// methods here.
+  /// binary, so merging history is server-side: your backend calls
+  /// `POST /v1/identify` with a secret key. [identify] only adopts the id on
+  /// this device; alias stays server-only.
   ///
   /// [device] overrides individual device facts (REV-268). The native SDK
   /// detects platform, OS version, app version, locale, currency, model and
@@ -135,6 +136,12 @@ class RevnixClient {
   /// Mint a fresh anonymous identity. Call at sign-out, or the next user
   /// inherits the previous one's cached entitlements.
   Future<String> logout() async => await _invoke<String>('logout') ?? '';
+
+  /// Adopt [userId] as this device's customer id locally (no network call).
+  /// Your backend merges history via `POST /v1/identify`. Empty or over 200
+  /// characters is ignored. Returns the resulting customer id.
+  Future<String> identify(String userId) async =>
+      await _invoke<String>('identify', {'userId': userId}) ?? '';
 
   /// Network-first entitlement read. Transient failures serve the cache
   /// flagged `stale`; deliberate rejections (401/403/404/409) throw.

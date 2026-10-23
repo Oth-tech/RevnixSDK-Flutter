@@ -141,6 +141,8 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
                     result(await client.customerId())
                 case "logout":
                     result(await client.logout())
+                case "identify":
+                    result(await client.identify(args["userId"] as? String ?? ""))
                 case "entitlements":
                     result(Self.map(try await client.entitlements()))
                 case "cachedEntitlements":

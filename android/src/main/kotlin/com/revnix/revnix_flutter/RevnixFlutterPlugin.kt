@@ -198,6 +198,7 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                 when (call.method) {
                     "customerId" -> result.success(active.customerId())
                     "logout" -> result.success(active.logout())
+                    "identify" -> result.success(active.identify(call.argument<String>("userId").orEmpty()))
                     "entitlements" -> result.success(map(active.entitlements()))
                     "cachedEntitlements" ->
                         result.success(active.cachedEntitlements()?.let(::map))
