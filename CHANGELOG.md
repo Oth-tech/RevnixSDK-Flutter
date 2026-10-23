@@ -1,5 +1,13 @@
 ## Unreleased
 
+### Added
+
+- `Future<String> identify(String userId)`: adopts the given customer id on the device with no network call, using the native 1.9.0 `identify`. Trims the id; an empty id or one over 200 characters is ignored and the current id is returned. Your backend must still call `POST /v1/identify` with a secret key to merge the anonymous history.
+
+### Changed
+
+- The offline entitlement cache is not signed yet: the bundled native SDKs (1.9.0) do not verify the server's new entitlement signature. Verification arrives when the plugin next bumps its native iOS and Android SDKs.
+
 ## 1.9.0
 
 ### Added
