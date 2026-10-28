@@ -193,7 +193,17 @@ public class RevnixFlutterPlugin: NSObject, FlutterPlugin, FlutterStreamHandler 
                     // with the display it ended. Older Dart ignores it.
                     let viewId = await client.logPaywallDisplay(
                         placementKey: args["placementKey"] as? String,
-                        paywallId: args["paywallId"] as? String)
+                        paywallId: args["paywallId"] as? String,
+                        productsShown: (args["productsShown"] as? [[String: Any]])?
+                            .compactMap { m in
+                                (m["productId"] as? String).map {
+                                    RevnixPaywallProductShown(
+                                        productId: $0,
+                                        priceLabel: m["priceLabel"] as? String,
+                                        amountMinor: (m["amountMinor"] as? NSNumber)?.intValue,
+                                        currency: m["currency"] as? String)
+                                }
+                            })
                     result(viewId)
                 case "logPaywallClosed":
                     await client.logPaywallClosed(

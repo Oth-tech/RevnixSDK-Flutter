@@ -124,6 +124,16 @@ const Color _cardBgLight = Color(0xFFF4F5F7);
 /// set", matching the React Native renderer's `value ?` checks.
 bool _filled(String? value) => value != null && value.isNotEmpty;
 
+List<RevnixPaywallPackage> _visiblePackages(
+  PaywallConfig config,
+  List<RevnixPaywallPackage> packages,
+) =>
+    config.template == 'minimal' && _filled(config.highlightPackageId)
+        ? packages
+            .where((p) => p.packageId == config.highlightPackageId)
+            .toList()
+        : packages;
+
 /// Parses a dashboard accent like "#6478ff" (also bare / 3-digit hex);
 /// anything unparseable falls back, never throws on a bad config.
 Color _hexColor(String? hex, Color fallback) {
@@ -299,6 +309,16 @@ class _RevnixPaywallState extends State<RevnixPaywall> {
           .logPaywallShown(
             placementKey: widget.placementKey,
             paywallId: widget.paywallId,
+            productsShown: [
+              for (final p in _visiblePackages(widget.config, widget.packages))
+                if (p.productId != null)
+                  RevnixPaywallProductShown(
+                    productId: p.productId!,
+                    priceLabel: p.priceLabel,
+                    amountMinor: p.amountMinor,
+                    currency: p.currency,
+                  ),
+            ],
           )
           .then<String?>((id) => id, onError: (_) => null);
       _viewReport = report;
@@ -511,11 +531,7 @@ class _RevnixPaywallState extends State<RevnixPaywall> {
 
     // Same template semantics as the dashboard preview: "minimal" shows only
     // the highlighted package; feature bullets render on the feature layouts.
-    final shown = layout == 'minimal' && _filled(config.highlightPackageId)
-        ? widget.packages
-            .where((p) => p.packageId == config.highlightPackageId)
-            .toList()
-        : widget.packages;
+    final shown = _visiblePackages(config, widget.packages);
 
     String? fallbackSelected;
     for (final p in shown) {

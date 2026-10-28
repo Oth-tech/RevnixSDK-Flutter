@@ -529,6 +529,28 @@ void main() {
       await revnix.logPaywallShown(placementKey: 'onboarding');
       expect(log.last.method, 'logPaywallShown');
       expect((log.last.arguments as Map)['placementKey'], 'onboarding');
+      expect((log.last.arguments as Map).containsKey('productsShown'), isFalse);
+
+      await revnix.logPaywallShown(
+        productsShown: const [
+          RevnixPaywallProductShown(productId: 'a'),
+          RevnixPaywallProductShown(
+            productId: 'b',
+            priceLabel: r'$4.99',
+            amountMinor: 499,
+            currency: 'USD',
+          ),
+        ],
+      );
+      expect((log.last.arguments as Map)['productsShown'], [
+        {'productId': 'a'},
+        {
+          'productId': 'b',
+          'priceLabel': r'$4.99',
+          'amountMinor': 499,
+          'currency': 'USD',
+        },
+      ]);
     });
   });
 
