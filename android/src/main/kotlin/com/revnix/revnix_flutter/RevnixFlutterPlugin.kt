@@ -262,6 +262,17 @@ class RevnixFlutterPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                         val viewId = active.logPaywallDisplay(
                             placementKey = call.argument<String>("placementKey"),
                             paywallId = call.argument<String>("paywallId"),
+                            productsShown = call.argument<List<Map<String, Any?>>>("productsShown")
+                                ?.mapNotNull { map ->
+                                    (map["productId"] as? String)?.let { id ->
+                                        com.revnix.PaywallProductShown(
+                                            productId = id,
+                                            priceLabel = map["priceLabel"] as? String,
+                                            amountMinor = (map["amountMinor"] as? Number)?.toLong(),
+                                            currency = map["currency"] as? String,
+                                        )
+                                    }
+                                },
                         )
                         result.success(viewId)
                     }

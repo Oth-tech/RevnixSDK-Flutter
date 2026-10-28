@@ -1,5 +1,9 @@
 ## Unreleased
 
+### Added
+
+- `logPaywallShown(productsShown:)` and `RevnixPaywallProductShown`: the display beacon can carry the products a paywall showed (`productId`, `priceLabel`, `amountMinor`, `currency`); `RevnixPaywall` fills it from packages that have a `productId`. Omitted when empty.
+
 ## 1.10.1
 
 ### Changed

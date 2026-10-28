@@ -1,9 +1,32 @@
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart' show immutable, visibleForTesting;
 import 'package:flutter/services.dart';
 
 import 'errors.dart';
 import 'models.dart';
 import 'ui/paywall_localization.dart' show revnixSetLocale;
+
+/// One product a paywall displayed, reported on the display beacon.
+@immutable
+class RevnixPaywallProductShown {
+  const RevnixPaywallProductShown({
+    required this.productId,
+    this.priceLabel,
+    this.amountMinor,
+    this.currency,
+  });
+
+  final String productId;
+  final String? priceLabel;
+  final int? amountMinor;
+  final String? currency;
+
+  Map<String, Object?> toMap() => {
+    'productId': productId,
+    'priceLabel': ?priceLabel,
+    'amountMinor': ?amountMinor,
+    'currency': ?currency,
+  };
+}
 
 /// Flutter client for Revnix.
 ///
@@ -255,11 +278,19 @@ class RevnixClient {
   /// display it ended, and the gap between their timestamps is the customer's
   /// dwell on the screen. Ignoring the result is still valid — it stays a
   /// fire-and-forget beacon. [RevnixPaywall] does all of this for you.
-  Future<String?> logPaywallShown({String? placementKey, String? paywallId}) =>
-      _invoke<String>('logPaywallShown', {
-        'placementKey': ?placementKey,
-        'paywallId': ?paywallId,
-      });
+  ///
+  /// [productsShown] lists the products the paywall displayed; it is omitted
+  /// from the beacon when null or empty.
+  Future<String?> logPaywallShown({
+    String? placementKey,
+    String? paywallId,
+    List<RevnixPaywallProductShown>? productsShown,
+  }) => _invoke<String>('logPaywallShown', {
+    'placementKey': ?placementKey,
+    'paywallId': ?paywallId,
+    if (productsShown != null && productsShown.isNotEmpty)
+      'productsShown': [for (final p in productsShown) p.toMap()],
+  });
 
   /// Fire-and-forget paywall dismissal (REV-252) — the other half of a
   /// display's life. Idempotent per view id, exactly like the impression.
