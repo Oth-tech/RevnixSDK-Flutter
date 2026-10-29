@@ -1,8 +1,14 @@
 ## Unreleased
 
+## 1.11.0
+
 ### Added
 
 - `logPaywallShown(productsShown:)` and `RevnixPaywallProductShown`: the display beacon can carry the products a paywall showed (`productId`, `priceLabel`, `amountMinor`, `currency`); `RevnixPaywall` fills it from packages that have a `productId`. Omitted when empty.
+
+### Changed
+
+- Native SDKs: RevnixSDK-iOS 28dcb7c → 095c4f1, RevnixSDK-Android 42914f9 → 035ffb6.
 
 ## 1.10.1
 
