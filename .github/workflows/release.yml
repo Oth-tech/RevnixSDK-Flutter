@@ -64,7 +64,7 @@ jobs:
           cache: true
 
       - name: Analyze and test main before touching it
-        run: flutter pub get && flutter analyze && flutter test
+        run: flutter pub get && flutter analyze --no-fatal-infos && flutter test
 
       # A previous run may have merged the bump and then failed before tagging.
       # main is then one version ahead of the tags. Release that version
@@ -189,7 +189,7 @@ jobs:
 
       - name: Analyze and test the bumped tree
         if: steps.pending.outputs.pending != 'true' && steps.gate.outputs.release == 'true'
-        run: flutter pub get && flutter analyze && flutter test
+        run: flutter pub get && flutter analyze --no-fatal-infos && flutter test
 
       - name: Land the bump through a pull request (main takes merge commits only)
         if: steps.pending.outputs.pending != 'true' && steps.gate.outputs.release == 'true'

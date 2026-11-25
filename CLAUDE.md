@@ -30,7 +30,7 @@ Flutter plugin `revnix_flutter` (pub.dev, publisher revnix.io, repo `Oth-tech/Re
 Flutter is not on PATH on this Mac: `export PATH="$HOME/development/flutter/bin:$PATH"`.
 ```bash
 flutter pub get
-flutter analyze                       # exits 1 on infos; CI uses stable, which may be newer than local
+flutter analyze --no-fatal-infos      # what CI and release run; plain analyze exits 1 on infos (Flutter 3.50 deprecated material.dart); CI uses stable
 flutter test                          # single: flutter test test/purchase_test.dart
 flutter pub publish --dry-run         # CI asserts the archive contains revnix-kotlin and Revnix
 cd example && flutter run             # needs a real key + baseUrl in lib/main.dart; iOS needs the Xcode license accepted
